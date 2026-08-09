@@ -111,6 +111,8 @@ Each is load-bearing:
 | `acorn` + `magic-string` | Precise loop-guard injection. See §6.6. |
 | Playwright (via Vitest browser mode) | Mandatory; see §8.1. |
 | `prettier-plugin-tailwindcss` | Class sorting. |
+| `oxlint` + `oxlint-tsgolint` | The linter. See §9.1 for why this replaces ESLint. |
+| `@ianvs/prettier-plugin-sort-imports` | Import sorting, replacing `eslint-plugin-perfectionist`. Babel-based, so independent of the TypeScript version. |
 
 ### 3.4 Offline by construction
 
@@ -120,10 +122,12 @@ referenced from the sandbox import map. The app works on a plane and in CI.
 ### 3.5 Verified dependency versions (2026-08-09)
 
 `typescript@7.0.2` · `react@19.2.8` · `vite@8.2.1` · `vitest@4.1.10` · `tailwindcss@4.3.3` ·
-`@tailwindcss/browser@4.3.3` · `motion@13.0.0` · `eslint@10.8.1` · `prettier@3.9.6` ·
-`zustand@5.0.14` · `@tanstack/react-query@5.101.4` · `react-hook-form@7.85.0` ·
-`@faker-js/faker@10.5.0` · `codemirror@6.0.2` · `sucrase@3.35.1` ·
-`json-server@1.0.0-beta.15`.
+`@tailwindcss/browser@4.3.3` · `motion@13.0.0` · `oxlint@1.77.0` ·
+`oxlint-tsgolint@7.0.2001` · `prettier@3.9.6` · `zustand@5.0.14` ·
+`@tanstack/react-query@5.101.4` · `@tanstack/react-router@1.170.25` ·
+`react-hook-form@7.85.0` · `zod@4.4.3` · `@faker-js/faker@10.5.0` · `codemirror@6.0.2` ·
+`sucrase@3.35.1` · `acorn@8.18.0` · `magic-string@1.1.0` · `playwright@1.62.1` ·
+`shadcn@4.16.2` · `json-server@1.0.0-beta.15`.
 
 `json-server` has no stable 1.x; the beta is pinned exactly and kept behind
 `HttpProgressRepository` so it is swappable without touching the app.
@@ -443,6 +447,16 @@ visibly freeze what the user is watching.
 `react/jsx-runtime`, `motion`, and `motion/react`, pointing at locally built ESM chunks.
 `@tailwindcss/browser` is loaded only for challenges whose `tech` includes `tailwind`.
 
+**Verified in Chromium 2026-08-09:** a blob-URL module resolves bare specifiers through
+the host document's import map, and blob-to-blob relative imports resolve once rewritten
+to absolute blob URLs. Both are load-bearing for the module graph above.
+
+**Constraint this imposes:** it works over `http(s)` only. Loaded from `file://`, the blob
+inherits an opaque `null` origin and the bare-specifier import fails with
+`Failed to fetch dynamically imported module`. The production build must therefore be
+*served*, never opened as a file — stated in the README, and the reason §12 assumption 2
+says "static build", not "double-clickable".
+
 ### 6.3 Message protocol
 
 Typed and zod-validated in both directions, with a version field.
@@ -470,6 +484,19 @@ One is not enough:
   do not go through WAAPI, so `seek` alone would quietly test nothing.
 - **`settle()`** — await every `animation.finished` behind a wall-clock timeout, for
   end-state assertions.
+
+**Verified in Chromium 2026-08-09** against a working prototype, not assumed: a
+`CSSTransition` scrubbed to 250ms of a 1000ms linear `translateX(0→400px)` reads exactly
+100px; a `CSSAnimation` at 400ms of 800ms `0→200px` reads exactly 100px; a WAAPI animation
+at 300ms of 1200ms `0→600px` reads exactly 150px; `getKeyframes()` and `getTiming()`
+return the authored values; `CSSKeyframesRule` is findable by name; and `matchMedia` is
+redefinable.
+
+**The off-by-one that graders must respect:** the first patched-rAF callback only
+establishes the time baseline, so `stepFrames(n)` yields **n − 1** frames of actual
+motion. In the prototype, 15 steps of a 500ms rAF tween over `0→300px` produced exactly
+140px, not 150px. Every rAF challenge grader is wrong by one frame if this is ignored, so
+`stepFrames` documents it and the rAF graders assert against the n − 1 value.
 
 ### 6.5 Assertion DSL
 
@@ -664,14 +691,47 @@ the fake clock exists precisely so animation tests never depend on wall time.
 ## 9. Tooling and conventions
 
 - **TypeScript 7.0.2** — `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
-  `verbatimModuleSyntax`, `erasableSyntaxOnly`. No `any`.
-- **ESLint 10** flat config in TypeScript: typescript-eslint strict-type-checked, react,
-  react-hooks, jsx-a11y, import, perfectionist, `@vitest/eslint-plugin`, and
-  `eslint-comments` with **`no-use: error`** — which mechanically enforces the "no eslint
-  disable comments" rule rather than relying on discipline.
+  `verbatimModuleSyntax`, `erasableSyntaxOnly`. No `any`. Optional interface properties are
+  declared `prop?: T | undefined`, because `exactOptionalPropertyTypes` otherwise rejects
+  assignment from zod's inferred output types.
 - **Prettier 3.9.6** — `printWidth: 120`, single quotes, `trailingComma: 'all'`, semicolons,
-  `arrowParens: 'always'`, plus `prettier-plugin-tailwindcss`. `.prettierignore` covers
-  `pnpm-lock.yaml`, `server/db.json`, `dist`, `coverage`, and generated chunks.
+  `arrowParens: 'always'`, plus `prettier-plugin-tailwindcss` and
+  `@ianvs/prettier-plugin-sort-imports`. `.prettierignore` covers `pnpm-lock.yaml`,
+  `server/db.json`, `dist`, `coverage`, and generated chunks.
+
+### 9.1 Why oxlint rather than ESLint
+
+The originally specified ESLint stack is incompatible with TypeScript 7. Verified
+2026-08-09 against the real registry:
+
+| Combination | Result |
+| --- | --- |
+| `typescript@7.0.2` + `typescript-eslint@8.66.0` | Hard refusal: "typescript-eslint does not support TS 7.0". Upstream issue #10940 targets TS ≥ 7.1 |
+| pnpm `overrides` giving typescript-eslint a TS 6 copy | Does not apply — `typescript` is a peer dependency, resolved from the importer |
+| `eslint@10.8.1` + `eslint-plugin-react@7.37.5` | Runtime crash: `contextOrFilename.getFilename is not a function` |
+| `eslint@9.39.5` + full plugin set + `typescript@6.0.3` | Works, but forfeits TypeScript 7 |
+| `typescript@7.0.2` + `oxlint@1.77.0` + `oxlint-tsgolint@7.0.2001` | Works, including type-aware rules |
+
+Because typescript-eslint *is* the TypeScript parser, dropping it does not merely weaken
+linting — ESLint cannot read a `.ts` file at all, and the "no `any`" rule has nothing to
+run against. TypeScript 7 was kept and the linter replaced.
+
+**oxlint configuration** (`.oxlintrc.json`): plugins `typescript`, `react`, `jsx-a11y`,
+`import`, `promise`, `vitest`; categories `correctness`, `suspicious`, `perf` as errors;
+`typescript/no-explicit-any`, `react-hooks/rules-of-hooks`, and
+`react-hooks/exhaustive-deps` as errors; `react/react-in-jsx-scope` off for React 19.
+Type-aware rules run via `oxlint --type-aware`, which requires the `oxlint-tsgolint`
+package. Verified firing: `no-explicit-any`, `no-floating-promises`, `rules-of-hooks`,
+`exhaustive-deps`, `jsx-a11y/alt-text`.
+
+**Two capabilities lost with ESLint, and their replacements:**
+
+1. `eslint-plugin-perfectionist` import sorting → `@ianvs/prettier-plugin-sort-imports`,
+   applied by `pnpm format` and checked by `pnpm format:check`.
+2. `eslint-comments/no-use`, which mechanically banned disable comments → a grep gate in
+   `pnpm verify` that fails on any `oxlint-disable` or `eslint-disable` occurrence in
+   `src/`, `sandbox/`, or `server/`. oxlint honours `eslint-disable` directives too, so
+   the gate must reject both spellings.
 - **Scripts** — `dev` (vite + json-server concurrently), `dev:app`, `dev:api`, `build`,
   `preview`, `seed`, `typecheck`, `lint`, `lint:fix`, `format`, `format:check`, `test`,
   `test:unit`, `test:browser`, `test:catalog`, `verify`.
