@@ -716,6 +716,9 @@ Step 4 is the schema-risk gate: a flaw found there costs 16 rewrites instead of 
 
 1. Single implicit local user; no authentication.
 2. The static build works standalone on localStorage, with JSON Server optional.
-3. Chromium is the reference browser for grading. Graders avoid engine-specific
-   assumptions where practical, but computed-style and WAAPI behaviour is verified
-   against Chromium only.
+3. Chromium is the reference browser for grading — confirmed with the user, who works in
+   Chrome, rather than assumed. Graders avoid engine-specific assumptions where
+   practical, but computed-style and WAAPI behaviour is verified against Chromium only.
+   Running the integrity suite across three engines would multiply CI time for a tool
+   used locally in one browser. If cross-engine grading is wanted later, the cost is
+   re-tuning tolerances in existing graders, not restructuring the runner.
