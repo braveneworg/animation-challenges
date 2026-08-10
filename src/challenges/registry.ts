@@ -25,37 +25,56 @@ function readChallengeExport(moduleValue: unknown): unknown {
 export function buildRegistry(modules: Record<string, unknown>): Registry {
   const challenges: Challenge[] = [];
   const errors: RegistryError[] = [];
+  const seenIds = new Set<string>();
 
   for (const modulePath of Object.keys(modules).sort()) {
-    const exported = readChallengeExport(modules[modulePath]);
+    try {
+      const exported = readChallengeExport(modules[modulePath]);
 
-    if (exported === undefined) {
-      errors.push({ modulePath, issues: ['module must export a `challenge` constant'] });
-      continue;
+      if (exported === undefined) {
+        errors.push({ modulePath, issues: ['module must export a `challenge` constant'] });
+        continue;
+      }
+
+      const parsed = safeParseChallenge(exported);
+      if (!parsed.success) {
+        errors.push({ modulePath, issues: parsed.issues });
+        continue;
+      }
+
+      const expectedId = idFromModulePath(modulePath);
+      if (parsed.data.id !== expectedId) {
+        errors.push({
+          modulePath,
+          issues: [`id "${parsed.data.id}" does not match its file path, which implies "${expectedId}"`],
+        });
+        continue;
+      }
+
+      if (seenIds.has(parsed.data.id)) {
+        errors.push({
+          modulePath,
+          issues: [`duplicate id "${parsed.data.id}" is already provided by another module`],
+        });
+        continue;
+      }
+
+      seenIds.add(parsed.data.id);
+      challenges.push(parsed.data);
+    } catch (error) {
+      // Reading the export or parsing it can run arbitrary user code (a throwing getter,
+      // for instance), so this must not be allowed to abort the loop for every module
+      // not yet visited — one broken challenge must not hide the other 122.
+      errors.push({ modulePath, issues: [`threw while reading its \`challenge\` export: ${String(error)}`] });
     }
-
-    const parsed = safeParseChallenge(exported);
-    if (!parsed.success) {
-      errors.push({ modulePath, issues: parsed.issues });
-      continue;
-    }
-
-    const expectedId = idFromModulePath(modulePath);
-    if (parsed.data.id !== expectedId) {
-      errors.push({
-        modulePath,
-        issues: [`id "${parsed.data.id}" does not match its file path, which implies "${expectedId}"`],
-      });
-      continue;
-    }
-
-    challenges.push(parsed.data);
   }
 
   challenges.sort((a, b) => a.id.localeCompare(b.id));
 
-  // Ids are derived from module paths, and a module map cannot hold the same path twice,
-  // so duplicate ids are structurally impossible here. No duplicate check is needed.
+  // Ids derive from module paths, but distinct keys can still collide once normalized
+  // (e.g. `./foo.ts` and `foo.ts` both derive `foo`), so uniqueness is not structural.
+  // `seenIds` above is what actually guarantees `challenges.length === byId.size` by
+  // rejecting a repeat instead of silently overwriting it here.
   const byId = new Map<string, Challenge>(challenges.map((entry) => [entry.id, entry]));
 
   return { challenges, byId, errors };

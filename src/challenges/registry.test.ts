@@ -62,6 +62,34 @@ describe('buildRegistry', () => {
     expect(registry.errors[0]?.issues.join(' ')).toMatch(/goals/i);
   });
 
+  it('accumulates errors even when a module throws while reading its export', () => {
+    const registry = buildRegistry({
+      './css-transitions/aaa-broken.ts': {
+        get challenge(): never {
+          throw new Error('boom');
+        },
+      },
+      './css-transitions/hover-lift.ts': { challenge: challenge() },
+    });
+
+    expect(registry.errors).toHaveLength(1);
+    expect(registry.errors[0]?.modulePath).toBe('./css-transitions/aaa-broken.ts');
+    expect(registry.errors[0]?.issues.join(' ')).toMatch(/threw while reading its `challenge` export/i);
+    expect(registry.challenges).toHaveLength(1);
+    expect(registry.challenges[0]?.id).toBe('css-transitions/hover-lift');
+  });
+
+  it('reports a duplicate id instead of silently dropping one entry', () => {
+    const registry = buildRegistry({
+      './css-transitions/hover-lift.ts': { challenge: challenge() },
+      'css-transitions/hover-lift.ts': { challenge: challenge() },
+    });
+
+    expect(registry.errors).toHaveLength(1);
+    expect(registry.errors[0]?.issues.join(' ')).toMatch(/duplicate id/i);
+    expect(registry.challenges.length).toBe(registry.byId.size);
+  });
+
   it('indexes several challenges independently', () => {
     const registry = buildRegistry({
       './css-transitions/hover-lift.ts': { challenge: challenge() },
