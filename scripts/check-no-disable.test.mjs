@@ -10,7 +10,7 @@ import { findDisableComments } from './check-no-disable.mjs';
 const OXLINT_MARKER = ['ox', 'lint-disable-next-line'].join('');
 const ESLINT_MARKER = ['es', 'lint-disable'].join('');
 
-test('flags oxlint-disable and eslint-disable, ignores clean files', () => {
+test('flags disable comments in either spelling, ignores clean files', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-'));
   mkdirSync(join(dir, 'src'));
   writeFileSync(join(dir, 'src', 'clean.ts'), 'export const a = 1;\n');
@@ -18,8 +18,24 @@ test('flags oxlint-disable and eslint-disable, ignores clean files', () => {
   writeFileSync(join(dir, 'src', 'es.ts'), `/* ${ESLINT_MARKER} */\nexport const c = 3;\n`);
 
   const hits = findDisableComments([join(dir, 'src')]);
-  const files = hits.map((h) => h.file.split('/').pop()).sort((a, b) => a.localeCompare(b));
+  const normalized = hits
+    .map((hit) => ({ file: hit.file.split('/').pop(), line: hit.line, text: hit.text }))
+    .sort((a, b) => a.file.localeCompare(b.file));
 
-  assert.deepEqual(files, ['es.ts', 'ox.ts']);
+  assert.deepEqual(normalized, [
+    { file: 'es.ts', line: 1, text: `/* ${ESLINT_MARKER} */` },
+    { file: 'ox.ts', line: 1, text: `// ${OXLINT_MARKER}` },
+  ]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('does not descend into skipped directories', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-skip-'));
+  mkdirSync(join(dir, 'node_modules'));
+  writeFileSync(join(dir, 'node_modules', 'vendor.js'), `// ${OXLINT_MARKER}\n`);
+
+  const hits = findDisableComments([dir]);
+
+  assert.deepEqual(hits, []);
   rmSync(dir, { recursive: true, force: true });
 });

@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DEFAULT_ROOTS = ['src', 'sandbox', 'server'];
+const DEFAULT_ROOTS = ['.'];
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.git', '.claude', '.superpowers']);
 const EXTENSIONS = new Set(['.ts', '.tsx', '.css', '.js', '.mjs', '.html']);
 const PATTERN = /(?:oxlint|eslint)-disable/;
 
@@ -15,7 +16,7 @@ function walk(dir, files = []) {
   for (const entry of entries) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
-      if (entry !== 'node_modules') walk(full, files);
+      if (!SKIP_DIRS.has(entry)) walk(full, files);
     } else if (EXTENSIONS.has(entry.slice(entry.lastIndexOf('.')))) {
       files.push(full);
     }
