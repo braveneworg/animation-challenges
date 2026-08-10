@@ -18,14 +18,5 @@
     "jsx-a11y/alt-text": "error",
     "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }]
   },
-  "overrides": [
-    {
-      "files": ["scripts/check-no-disable.test.mjs"],
-      "rules": {
-        "no-useless-concat": "off",
-        "typescript/require-array-sort-compare": "off"
-      }
-    }
-  ],
   "ignorePatterns": ["dist", "coverage", "node_modules", "server/db.json"]
 }
