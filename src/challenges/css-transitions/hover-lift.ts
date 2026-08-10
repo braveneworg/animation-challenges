@@ -18,7 +18,7 @@ export const challenge: Challenge = {
   goals: [
     'Hovering the card moves it up by 6px over roughly 200ms.',
     'The shadow deepens over the same period.',
-    'Only transform and opacity-backed properties are transitioned — no `all`, no `top`, no `margin`.',
+    'The movement uses `transform` — not `top` or `margin` — and the transitioned properties are named explicitly rather than using `all`.',
   ],
   starter: {
     'index.html': '<div class="card">Hover me</div>\n',
@@ -90,7 +90,7 @@ export const challenge: Challenge = {
   gradeMode: 'auto',
   hints: [
     'The `transition` property belongs on the resting state, not only on `:hover` — otherwise the return trip is instant.',
-    'Which two properties can a browser animate without touching layout or paint?',
+    'Which property moves an element without asking the browser to redo layout?',
     'List the transitioned properties explicitly, separated by commas.',
   ],
   relatedIds: [],
