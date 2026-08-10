@@ -14,7 +14,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "lint:no-disable": "node scripts/check-no-disable.mjs"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -26,6 +29,8 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.5",
+    "oxlint": "1.77.0",
+    "oxlint-tsgolint": "7.0.2001",
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
     "typescript": "7.0.2",
