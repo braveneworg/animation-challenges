@@ -39,3 +39,29 @@ test('does not descend into skipped directories', () => {
   assert.deepEqual(hits, []);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('does not descend into a coverage directory', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-coverage-'));
+  mkdirSync(join(dir, 'coverage'));
+  writeFileSync(join(dir, 'coverage', 'report.js'), `// ${OXLINT_MARKER}\n`);
+
+  const hits = findDisableComments([dir]);
+
+  assert.deepEqual(hits, []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('with no roots given, scans from the repository root', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-root-'));
+  writeFileSync(join(dir, 'some.config.ts'), `// ${OXLINT_MARKER}\nexport const a = 1;\n`);
+  const cwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const hits = findDisableComments();
+    assert.equal(hits.length, 1);
+    assert.ok(hits[0].file.includes('some.config.ts'));
+  } finally {
+    process.chdir(cwd);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
