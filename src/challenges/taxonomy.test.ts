@@ -36,6 +36,10 @@ describe('series', () => {
     expect(SERIES).toHaveLength(6);
   });
 
+  it('has a definition for every id, in the same order', () => {
+    expect(SERIES.map((series) => series.id)).toEqual([...SERIES_IDS]);
+  });
+
   it('plans three members for every series', () => {
     for (const series of SERIES) {
       expect(series.plannedMembers).toBe(3);
