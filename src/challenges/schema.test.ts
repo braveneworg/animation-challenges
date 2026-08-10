@@ -91,4 +91,32 @@ describe('challenge schema', () => {
     const result = safeParseChallenge({ ...validChallenge(), goals: [] });
     expect(result.success).toBe(false);
   });
+
+  it('rejects an id with more than one slash', () => {
+    const result = safeParseChallenge({ ...validChallenge(), id: 'css-transitions/sub/hover-lift' });
+    expect(result.success).toBe(false);
+    assertFailure(result);
+    expect(result.issues.join(' ')).toMatch(/exactly one slash/i);
+  });
+
+  it('rejects an id with an empty slug', () => {
+    const result = safeParseChallenge({ ...validChallenge(), id: 'css-transitions/' });
+    expect(result.success).toBe(false);
+    assertFailure(result);
+    expect(result.issues.join(' ')).toMatch(/kebab-case/i);
+  });
+
+  it('rejects an id whose slug has uppercase letters, spaces, or punctuation', () => {
+    const result = safeParseChallenge({ ...validChallenge(), id: 'css-transitions/Hover Lift!!' });
+    expect(result.success).toBe(false);
+    assertFailure(result);
+    expect(result.issues.join(' ')).toMatch(/kebab-case/i);
+  });
+
+  it('rejects an id whose slug has trailing whitespace', () => {
+    const result = safeParseChallenge({ ...validChallenge(), id: 'css-transitions/hover-lift   ' });
+    expect(result.success).toBe(false);
+    assertFailure(result);
+    expect(result.issues.join(' ')).toMatch(/kebab-case/i);
+  });
 });

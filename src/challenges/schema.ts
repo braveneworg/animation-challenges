@@ -48,6 +48,10 @@ export const challengeSchema = baseChallengeSchema
   .refine((challenge) => challenge.gradeMode === 'auto' || (challenge.rubric?.length ?? 0) > 0, {
     message: 'a rubric is required when gradeMode is "rubric" or "hybrid"',
     path: ['rubric'],
+  })
+  .refine((challenge) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(challenge.id.split('/')[1] ?? ''), {
+    message: 'the slug after the slash must be kebab-case: lowercase letters, digits, single hyphens',
+    path: ['id'],
   });
 
 export type ParseChallengeResult = { success: true; data: Challenge } | { success: false; issues: string[] };
