@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+dist
+coverage
+node_modules
+server/db.json
+playwright-report
+test-results
+.scaffold-tmp
+
+# Approved spec/plan artifacts — must stay byte-stable, not reformatted
+docs/superpowers/
