@@ -77,8 +77,13 @@ describe('buildRegistry', () => {
     const registry = buildRegistry({
       './waapi/bounce-in.ts': { challenge: challenge({ id: 'waapi/bounce-in', categoryId: 'waapi' }) },
       './css-transitions/hover-lift.ts': { challenge: challenge() },
+      './css-transitions/hover-lift-copy.ts': { challenge: challenge({ id: 'css-transitions/hover-lift-copy' }) },
     });
 
-    expect(registry.challenges.map((entry) => entry.id)).toEqual(['css-transitions/hover-lift', 'waapi/bounce-in']);
+    expect(registry.challenges.map((entry) => entry.id)).toEqual([
+      'css-transitions/hover-lift',
+      'css-transitions/hover-lift-copy',
+      'waapi/bounce-in',
+    ]);
   });
 });
