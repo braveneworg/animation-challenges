@@ -17,7 +17,11 @@
     "format:check": "prettier --check .",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
-    "lint:no-disable": "node scripts/check-no-disable.mjs"
+    "lint:no-disable": "node scripts/check-no-disable.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:browser": "vitest run --project browser",
+    "verify": "pnpm typecheck && pnpm lint && pnpm lint:no-disable && pnpm format:check && pnpm test"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -25,15 +29,21 @@
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
     "@types/node": "24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.5",
+    "@vitest/browser": "4.1.10",
+    "@vitest/browser-playwright": "4.1.10",
     "oxlint": "1.77.0",
     "oxlint-tsgolint": "7.0.2001",
+    "playwright": "1.62.1",
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
     "typescript": "7.0.2",
-    "vite": "8.2.1"
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
   }
 }

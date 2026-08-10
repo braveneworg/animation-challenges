@@ -10,7 +10,7 @@ import { findDisableComments } from './check-no-disable.mjs';
 const OXLINT_MARKER = ['ox', 'lint-disable-next-line'].join('');
 const ESLINT_MARKER = ['es', 'lint-disable'].join('');
 
-test('flags disable comments in either spelling, ignores clean files', () => {
+void test('flags disable comments in either spelling, ignores clean files', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-'));
   mkdirSync(join(dir, 'src'));
   writeFileSync(join(dir, 'src', 'clean.ts'), 'export const a = 1;\n');
@@ -29,7 +29,7 @@ test('flags disable comments in either spelling, ignores clean files', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('does not descend into skipped directories', () => {
+void test('does not descend into skipped directories', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-skip-'));
   mkdirSync(join(dir, 'node_modules'));
   writeFileSync(join(dir, 'node_modules', 'vendor.js'), `// ${OXLINT_MARKER}\n`);
@@ -40,7 +40,7 @@ test('does not descend into skipped directories', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('does not descend into a coverage directory', () => {
+void test('does not descend into a coverage directory', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-coverage-'));
   mkdirSync(join(dir, 'coverage'));
   writeFileSync(join(dir, 'coverage', 'report.js'), `// ${OXLINT_MARKER}\n`);
@@ -51,7 +51,7 @@ test('does not descend into a coverage directory', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('with no roots given, scans from the repository root', () => {
+void test('with no roots given, scans from the repository root', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-root-'));
   writeFileSync(join(dir, 'some.config.ts'), `// ${OXLINT_MARKER}\nexport const a = 1;\n`);
   const cwd = process.cwd();
