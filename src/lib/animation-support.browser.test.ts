@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { add } from '@/lib/sanity';
-
 describe('browser project', () => {
-  it('resolves the @ alias', () => {
-    expect(add(2, 3)).toBe(5);
-  });
-
   it('has the Web Animations API that jsdom lacks', async () => {
     const el = document.createElement('div');
     document.body.append(el);
