@@ -41,6 +41,9 @@ importers:
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
@@ -2138,6 +2141,9 @@ packages:
       utf-8-validate:
         optional: true
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@babel/code-frame@7.29.7':
@@ -3905,3 +3911,5 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.21.3: {}
+
+  zod@4.4.3: {}
