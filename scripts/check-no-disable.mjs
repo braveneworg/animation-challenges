@@ -1,23 +1,31 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DEFAULT_ROOTS = ['.'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.git', '.claude', '.superpowers']);
-const EXTENSIONS = new Set(['.ts', '.tsx', '.css', '.js', '.mjs', '.html']);
+// Every extension oxlint lints and therefore honours a disable comment in. Keep `.md` out:
+// the approved spec and plan quote both markers in prose.
+const EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.css', '.js', '.jsx', '.mjs', '.cjs', '.html']);
 const PATTERN = /(?:oxlint|eslint)-disable/;
 
 function walk(dir, files = []) {
   let entries;
   try {
-    entries = readdirSync(dir);
+    // `withFileTypes` reports the entry's own type without a follow-up `statSync`. That matters:
+    // `statSync` follows symlinks, so a dangling link throws ENOENT and a link loop throws ELOOP,
+    // and neither is catchable from inside this loop — both would crash the whole gate.
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
     return files;
   }
   for (const entry of entries) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (!SKIP_DIRS.has(entry)) walk(full, files);
-    } else if (EXTENSIONS.has(entry.slice(entry.lastIndexOf('.')))) {
+    // Symlinks are skipped outright rather than resolved: following them can loop, and anything
+    // a link points at inside the repo is already reached by its real path.
+    if (entry.isSymbolicLink()) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) walk(full, files);
+    } else if (EXTENSIONS.has(entry.name.slice(entry.name.lastIndexOf('.')))) {
       files.push(full);
     }
   }

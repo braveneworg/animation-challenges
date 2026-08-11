@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,6 +9,13 @@ import { findDisableComments } from './check-no-disable.mjs';
 // Split so this file never literally contains the pattern the gate bans.
 const OXLINT_MARKER = ['ox', 'lint-disable-next-line'].join('');
 const ESLINT_MARKER = ['es', 'lint-disable'].join('');
+
+/** Deterministic code-point ordering. `sort` is never called bare — the default comparator is implicit. */
+function byCodePoint(a, b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 
 void test('flags disable comments in either spelling, ignores clean files', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nodisable-'));
@@ -48,6 +55,46 @@ void test('does not descend into a coverage directory', () => {
   const hits = findDisableComments([dir]);
 
   assert.deepEqual(hits, []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+void test('scans every extension oxlint lints, including .cjs, .mts, .cts, and .jsx', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-ext-'));
+  const extensions = ['ts', 'tsx', 'css', 'js', 'mjs', 'cjs', 'mts', 'cts', 'jsx', 'html'];
+  for (const extension of extensions) {
+    writeFileSync(join(dir, `file.${extension}`), `// ${OXLINT_MARKER}\n`);
+  }
+
+  const found = findDisableComments([dir])
+    .map((hit) => hit.file.split('.').pop())
+    .sort(byCodePoint);
+
+  assert.deepEqual(found, [...extensions].sort(byCodePoint));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+void test('a broken symlink does not crash the walk', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-symlink-'));
+  writeFileSync(join(dir, 'real.ts'), `// ${OXLINT_MARKER}\n`);
+  symlinkSync(join(dir, 'does-not-exist.ts'), join(dir, 'dangling.ts'));
+
+  const hits = findDisableComments([dir]);
+
+  assert.equal(hits.length, 1);
+  assert.ok(hits[0].file.endsWith('real.ts'));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+void test('a symlinked directory is not followed, so a loop cannot hang the walk', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nodisable-loop-'));
+  mkdirSync(join(dir, 'src'));
+  writeFileSync(join(dir, 'src', 'real.ts'), `// ${OXLINT_MARKER}\n`);
+  symlinkSync(dir, join(dir, 'src', 'loop'));
+
+  const hits = findDisableComments([dir]);
+
+  assert.equal(hits.length, 1);
+  assert.ok(hits[0].file.endsWith('real.ts'));
   rmSync(dir, { recursive: true, force: true });
 });
 
