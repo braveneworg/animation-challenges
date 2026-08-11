@@ -18,5 +18,16 @@
     "jsx-a11y/alt-text": "error",
     "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }]
   },
-  "ignorePatterns": ["dist", "coverage", "node_modules", "server/db.json"]
+  "ignorePatterns": ["dist", "coverage", "node_modules", "server/db.json"],
+  // Scoped to the one fixture that needs it: loop-guard.test.ts runs a `new Function`-compiled
+  // string of *already-transpiled, test-authored* code to assert on injected guard calls — never
+  // user input, never shipped. Everywhere else in the repo, `typescript/no-implied-eval` still errors.
+  "overrides": [
+    {
+      "files": ["src/runner/loop-guard.test.ts"],
+      "rules": {
+        "typescript/no-implied-eval": "off"
+      }
+    }
+  ]
 }

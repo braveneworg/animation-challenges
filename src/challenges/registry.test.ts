@@ -79,6 +79,24 @@ describe('buildRegistry', () => {
     expect(registry.challenges[0]?.id).toBe('css-transitions/hover-lift');
   });
 
+  it('records — instead of throwing — a module whose export throws an unstringifiable value', () => {
+    const hostileModule = {
+      get challenge(): never {
+        throw {
+          toString(): string {
+            throw new Error('nested');
+          },
+        };
+      },
+    };
+    const registry = buildRegistry({ './css-transitions/hostile.ts': hostileModule });
+
+    expect(registry.challenges).toEqual([]);
+    expect(registry.errors).toHaveLength(1);
+    expect(registry.errors[0]?.modulePath).toBe('./css-transitions/hostile.ts');
+    expect(registry.errors[0]?.issues[0]).toContain('threw while reading');
+  });
+
   it('reports a duplicate id instead of silently dropping one entry', () => {
     const registry = buildRegistry({
       './css-transitions/hover-lift.ts': { challenge: challenge() },

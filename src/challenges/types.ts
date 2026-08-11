@@ -49,3 +49,10 @@ export interface Challenge {
   tags: readonly string[];
   graderTimeoutMs?: number | undefined;
 }
+
+/**
+ * Default grader budget in milliseconds (spec §4, §6.7). A challenge overrides it via
+ * `graderTimeoutMs`. The frame races the grader against this with its native timer and reports
+ * partial assertions on expiry; the host adds a hard backstop two seconds later.
+ */
+export const DEFAULT_GRADER_TIMEOUT_MS = 5000;

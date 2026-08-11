@@ -1,5 +1,6 @@
 import { safeParseChallenge } from '@/challenges/schema';
 import type { Challenge } from '@/challenges/types';
+import { safeString } from '@/runner/safe-string';
 
 export interface RegistryError {
   modulePath: string;
@@ -77,7 +78,7 @@ export function buildRegistry(modules: Record<string, unknown>): Registry {
       // Reading the export or parsing it can run arbitrary user code (a throwing getter,
       // for instance), so this must not be allowed to abort the loop for every module
       // not yet visited — one broken challenge must not hide the other 122.
-      errors.push({ modulePath, issues: [`threw while reading its \`challenge\` export: ${String(error)}`] });
+      errors.push({ modulePath, issues: [`threw while reading its \`challenge\` export: ${safeString(error)}`] });
     }
   }
 
