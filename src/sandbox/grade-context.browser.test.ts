@@ -135,6 +135,20 @@ test('click and focus dispatch real interactions', async () => {
   expect(document.activeElement).toBe(el);
 });
 
+test('click dispatches the full five-event mouse sequence in order', async () => {
+  const { ctx } = makeContext('<button class="gc-order">go</button>');
+  const el = ctx.query('.gc-order');
+  if (!(el instanceof HTMLElement)) throw new Error('query missed');
+  const order: string[] = [];
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+    el.addEventListener(type, () => {
+      order.push(type);
+    });
+  }
+  await ctx.click(el);
+  expect(order).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+});
+
 test('source and moduleExports expose the submission; setReducedMotion remounts with a flipped flag', async () => {
   const { ctx } = makeContext('<div></div>', {
     sources: { 'index.ts': 'export const speed = 3;' },

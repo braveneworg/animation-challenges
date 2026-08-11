@@ -188,7 +188,9 @@ export function buildGradeContext(deps: GradeContextDeps): GradeContext {
 
     async click(el: Element): Promise<void> {
       el.dispatchEvent(new PointerEvent('pointerdown', pointerInit({ x: 0, y: 0 }, 1)));
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       el.dispatchEvent(new PointerEvent('pointerup', pointerInit({ x: 0, y: 0 }, 0)));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       await deps.nativeNextFrame();
     },
