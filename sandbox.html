@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      The CSP is an offline guarantee, not a security boundary (spec §6.7): it blocks every remote
+      http(s) origin so nothing can quietly depend on a CDN. 'unsafe-inline' script-src is required
+      by Vite's dev-mode React preamble; blob: is the module graph; ws:/wss: is dev HMR.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' blob: 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self' blob:"
+    />
+    <title>Animation Challenges Sandbox</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/src/sandbox/vendor/react.ts",
+          "react/jsx-runtime": "/src/sandbox/vendor/react-jsx-runtime.ts",
+          "react-dom": "/src/sandbox/vendor/react-dom.ts",
+          "react-dom/client": "/src/sandbox/vendor/react-dom-client.ts",
+          "motion": "/src/sandbox/vendor/motion.ts",
+          "motion/react": "/src/sandbox/vendor/motion-react.ts"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module" src="/src/sandbox/main.ts"></script>
+  </body>
+</html>
