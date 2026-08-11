@@ -28,6 +28,16 @@ function nextFrame(): Promise<void> {
   });
 }
 
+// Invokes an arbitrary value as a plain function call (no `new`) without a type assertion: TS
+// statically refuses to call a constructor type directly (TS2348), so this narrows through
+// `unknown` first — the same shape a real student mistake takes at runtime (misusing an unrelated
+// helper class), independent of how the value is typed at the call site.
+function invokeWithoutNew(target: unknown): void {
+  if (typeof target === 'function') {
+    target();
+  }
+}
+
 test('renders a plain function component', async () => {
   const el = makeContainer();
   const App = (): ReactElement => createElement('p', { className: 'from-react' }, 'hello');
@@ -125,4 +135,30 @@ test('a bound class component default export (not extending Component) reports t
   expect(errors).toHaveLength(1);
   const [error] = errors;
   expect(error instanceof Error && /App\.tsx/.test(error.message)).toBe(true);
+});
+
+// Over-broad-mapping regression: `normalizeRenderError` must not rewrite EVERY
+// "Class constructor … cannot be invoked without 'new'" TypeError — only one whose captured class
+// name matches the mounted default export's (unbound) name. Otherwise a real, unrelated student
+// bug (misusing some other helper class inside an otherwise-valid function component) gets
+// mislabeled as an App.tsx default-export problem, hiding the actual mistake.
+test('a valid function component whose render misuses an unrelated class is NOT rewritten to the App.tsx message', async () => {
+  const el = makeContainer();
+  // A helper class the student's component code misuses — irrelevant to the default export.
+  class NestedThing {
+    value = 1;
+  }
+  const App = (): ReactElement => {
+    invokeWithoutNew(NestedThing); // throws: "Class constructor NestedThing cannot be invoked without 'new'"
+    return createElement('p', null, 'unreachable');
+  };
+  const errors: unknown[] = [];
+  mounted = mountReactComponent(el, App, (error) => {
+    errors.push(error);
+  });
+  await nextFrame();
+  expect(errors).toHaveLength(1);
+  const [error] = errors;
+  expect(error instanceof Error && /NestedThing/.test(error.message)).toBe(true);
+  expect(error instanceof Error && /App\.tsx/.test(error.message)).toBe(false);
 });
