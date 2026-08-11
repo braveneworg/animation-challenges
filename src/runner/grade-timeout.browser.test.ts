@@ -13,12 +13,12 @@ afterEach(() => {
   frame = null;
 });
 
-function trivialPayload(): MountPayload {
+function trivialPayload(challengeId = 'test/timeout-host'): MountPayload {
   const prepared = prepareSubmission({ 'index.html': '<div class="t-box">x</div>' }, 'dom');
   if (!prepared.ok) throw new Error('fixture must prepare');
   const { submission } = prepared;
   return {
-    challengeId: 'test/timeout-host',
+    challengeId,
     runtime: 'dom',
     wantsTailwind: false,
     modules: submission.modules,
@@ -63,3 +63,60 @@ test('a submission with an infinite loop is caught by the injected guard end to 
   expect(report.passed).toBe(false);
   expect(report.threw?.message).toContain('possible infinite loop');
 }, 30_000);
+
+// --- gradeInFlight guard (spec §6.7 timer-sweep hazard) ---
+//
+// Ordering in both tests below is deterministic, not a race: `frame.grade(...)` is called WITHOUT
+// awaiting, so its 'grade' postMessage is sent before `frame.reset()`'s 'reset' postMessage; the
+// harness receives same-source messages in that same FIFO order; and `gradeInFlight` is set
+// synchronously at the very top of the 'grade' case, before `grade()`'s first internal `await` —
+// so by the time the frame processes the 'reset' message, the flag is already `true` no matter how
+// long the grade's own async work (a dynamic `import()`, a paced `stepFrames`) takes.
+
+test('a reset() ignored mid-grade does not corrupt the in-flight grade', async () => {
+  frame = await SandboxFrame.create();
+  await frame.mount(trivialPayload());
+  const gradePromise = frame.grade('css-transitions/_timeout-fixture', 300);
+  frame.reset();
+  const report = await gradePromise;
+  expect(report.timedOut).toBe(true);
+  expect(report.assertions.length).toBe(2);
+  expect(report.assertions.every((assertion) => assertion.ok)).toBe(true);
+}, 20_000);
+
+test('a reset() ignored mid-grade does not sweep a live TimeController pacing timer', async () => {
+  frame = await SandboxFrame.create();
+  await frame.mount(trivialPayload());
+  const gradePromise = frame.grade('css-transitions/_stepframes-fixture', 5000);
+  frame.reset();
+  const report = await gradePromise;
+  expect(report.timedOut).toBe(false);
+  expect(report.threw).toBeNull();
+  expect(report.assertions.length).toBe(1);
+  expect(report.assertions[0]?.ok).toBe(true);
+}, 20_000);
+
+test('a mount() ignored mid-grade rejects fast via a loud protocol-scoped error, not the 15s mount timeout', async () => {
+  frame = await SandboxFrame.create();
+  await frame.mount(trivialPayload('test/a'));
+  const gradePromise = frame.grade('css-transitions/_timeout-fixture', 300);
+  const startedAt = performance.now();
+  await expect(frame.mount(trivialPayload('test/b'))).rejects.toThrow(/grade in progress/);
+  expect(performance.now() - startedAt).toBeLessThan(5000);
+  await gradePromise;
+}, 20_000);
+
+test('a second concurrent grade() is rejected loudly without corrupting the first grade result', async () => {
+  frame = await SandboxFrame.create();
+  await frame.mount(trivialPayload());
+  const firstGrade = frame.grade('css-transitions/_timeout-fixture', 300);
+  // The reentrancy guard drops this on the frame side with a `scope: 'protocol'` error, which
+  // nothing in `SandboxFrame.grade()` listens for — so this promise only settles later, via its own
+  // host backstop timer, independently of `firstGrade`.
+  const secondGrade = frame.grade('css-transitions/hover-lift', 300);
+  const firstReport = await firstGrade;
+  expect(firstReport.timedOut).toBe(true);
+  expect(firstReport.assertions.length).toBe(2);
+  const secondReport = await secondGrade;
+  expect(secondReport.timedOut).toBe(true);
+}, 20_000);

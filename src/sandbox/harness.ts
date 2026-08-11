@@ -92,6 +92,14 @@ export function startHarness(win: Window & typeof globalThis): void {
   // future host bug (or a malformed/duplicated message) violates that invariant. `handle` never
   // serializes message processing (each arrival is dispatched via `void handle(message)`), so
   // without this flag such a message would run concurrently with `grade` instead of queuing.
+  //
+  // Set synchronously at the top of the 'grade' case, before `grade`'s first internal `await` —
+  // combined with cross-window `postMessage` delivering same-source messages in FIFO order, this
+  // guarantees that if a 'grade' message is sent before a 'mount'/'reset'/'replay'/'grade' message,
+  // the flag is already `true` by the time the frame processes the later one, however long the
+  // first grade's own async work takes. Every guarded branch below posts a loud protocol-scoped
+  // error instead of a silent drop, so an illegal call fails fast on the host side rather than
+  // hanging to a timeout (mount/replay) or vanishing without a trace (reset/a second grade).
   let gradeInFlight = false;
 
   // Console forwarding (spec §6.3): original behaviour intact, every level mirrored to the host.
@@ -280,11 +288,40 @@ export function startHarness(win: Window & typeof globalThis): void {
           // See `gradeInFlight`'s declaration: the protocol never sends `mount` during a live
           // grade, but ignoring it here (rather than sweeping the grade's pacing timers via
           // `resetStage()`) turns a protocol violation into a loud host-side mount timeout instead
-          // of a corrupted, hanging grade.
-          if (gradeInFlight) break;
+          // of a corrupted, hanging grade. Posting a `scope: 'mount'` error (rather than dropping
+          // it silently) makes `SandboxFrame.mount()`'s existing scope-filtered listener reject
+          // immediately instead of hanging to its own 15s timeout.
+          if (gradeInFlight) {
+            post({
+              v: PROTOCOL_VERSION,
+              type: 'error',
+              scope: 'mount',
+              message: 'grade in progress; mount ignored',
+              stack: null,
+            });
+            break;
+          }
           await mount(message.mount);
           break;
         case 'grade':
+          // Reentrancy guard: a SECOND 'grade' message arriving while one is already outstanding is
+          // also a host-side protocol violation (this frame's protocol drives one grade at a time).
+          // Rejecting it via `scope: 'protocol'` — never `scope: 'grade'` — matters: `SandboxFrame`'s
+          // `grade()` listener settles on ANY `scope: 'grade'` error regardless of `challengeId`, so
+          // that scope would incorrectly settle the FIRST (still-running) grade's pending promise
+          // instead of surfacing the second call's rejection. `scope: 'protocol'` reaches no such
+          // listener, so it cannot corrupt the in-flight run; it exists purely as host-side
+          // visibility for a call pattern that should never happen.
+          if (gradeInFlight) {
+            post({
+              v: PROTOCOL_VERSION,
+              type: 'error',
+              scope: 'protocol',
+              message: 'a grade is already in progress; concurrent grade request ignored',
+              stack: null,
+            });
+            break;
+          }
           gradeInFlight = true;
           try {
             await grade(message.challengeId, message.timeoutMs);
@@ -293,15 +330,36 @@ export function startHarness(win: Window & typeof globalThis): void {
           }
           break;
         case 'reset':
-          // Same guard as 'mount' above — `resetStage()` is exactly the timer sweep the comment
-          // on `gradeInFlight` warns about.
-          if (gradeInFlight) break;
+          // Same guard as 'mount' above — `resetStage()` is exactly the timer sweep the comment on
+          // `gradeInFlight` warns about. `reset()` is fire-and-forget on the host (no correlated
+          // promise to settle), so `scope: 'protocol'` — the same scope already used for an
+          // unrecognised message below — just gives the host a feedback path if it is listening.
+          if (gradeInFlight) {
+            post({
+              v: PROTOCOL_VERSION,
+              type: 'error',
+              scope: 'protocol',
+              message: 'grade in progress; reset ignored',
+              stack: null,
+            });
+            break;
+          }
           resetStage();
           lastMount = null;
           break;
         case 'replay':
           // Same guard — `replay` re-enters `mount()`, which itself starts with `resetStage()`.
-          if (gradeInFlight) break;
+          // Also fire-and-forget on the host, so `scope: 'protocol'` for the same reason as 'reset'.
+          if (gradeInFlight) {
+            post({
+              v: PROTOCOL_VERSION,
+              type: 'error',
+              scope: 'protocol',
+              message: 'grade in progress; replay ignored',
+              stack: null,
+            });
+            break;
+          }
           if (lastMount !== null) await mount(lastMount);
           break;
       }
