@@ -52,8 +52,18 @@ describe('challenge schema', () => {
   });
 
   it('rejects an unknown category', () => {
-    const result = safeParseChallenge({ ...validChallenge(), categoryId: 'not-a-category' });
+    // The id must be changed alongside the categoryId. Leaving the valid `css-transitions/...` id
+    // in place makes the id-prefix refine reject the fixture on its own, so the test would pass
+    // even if `z.enum(CATEGORY_IDS)` were loosened to `z.string()` — it would prove nothing about
+    // the enum. Keeping them consistent leaves the enum as the only rule that can fire.
+    const result = safeParseChallenge({
+      ...validChallenge(),
+      categoryId: 'not-a-category',
+      id: 'not-a-category/hover-lift',
+    });
     expect(result.success).toBe(false);
+    assertFailure(result);
+    expect(result.issues).toEqual([expect.stringMatching(/^categoryId: Invalid option/)]);
   });
 
   it('requires a rubric when gradeMode is rubric', () => {
