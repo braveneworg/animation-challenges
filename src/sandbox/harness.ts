@@ -197,11 +197,17 @@ export function startHarness(win: Window & typeof globalThis): void {
         });
       }
     }
-    if (payload.wantsTailwind && payload.entryPath !== null) {
-      // The entry module (a React render, DOM-building script) may add classes the earlier pass
-      // never saw; the recompile regenerates the JIT output sheet, so wait again and re-apply the
-      // idempotent style rewrites to the fresh rules.
-      await waitForTailwind(doc, time.nativeNextFrame);
+    if (payload.entryPath !== null) {
+      if (payload.wantsTailwind) {
+        // The entry module (a React render, DOM-building script) may add classes the earlier pass
+        // never saw; the recompile regenerates the JIT output sheet, so wait for it before
+        // re-applying the style rewrites below.
+        await waitForTailwind(doc, time.nativeNextFrame);
+      }
+      // Unconditional on runtime, not just Tailwind: the entry module may also inject its OWN
+      // <style> element at runtime (a non-Tailwind challenge building its markup/CSS in script),
+      // which the initial pre-entry rewrite above never saw. Both callees are idempotent, so
+      // re-running here is always safe even when Tailwind never recompiled.
       applyEnvironmentToStyles();
     }
     // Two native frames so initial styles commit and transitions triggered by mount settle into rest.

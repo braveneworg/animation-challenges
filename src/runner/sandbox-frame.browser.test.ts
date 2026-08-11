@@ -224,6 +224,42 @@ test('a react default export that is a class component rejects the mount with a 
   ).rejects.toThrow(/App\.tsx/);
 });
 
+// Reviewer-flagged (final-review fix wave, item 1): the post-entry `applyEnvironmentToStyles()`
+// rerun used to be gated on `wantsTailwind`, so a non-Tailwind entry that injects its own <style>
+// at runtime (rather than through the submission's cssFiles, which the PRE-entry pass already
+// covers) never got the hover-selector rewrite. This fixture is deliberately `wantsTailwind: false`
+// (via `payloadFor`) and injects its <style> from INSIDE the entry script, after mount's first
+// `applyEnvironmentToStyles()` call has already run — only a post-entry rerun can catch it.
+const RUNTIME_INJECTED_STYLE_FIXTURE = {
+  'index.html': '<div id="rt-app"></div>',
+  'index.ts': [
+    "const style = document.createElement('style');",
+    "style.textContent = '.rt-hover:hover { color: rgb(0, 128, 0); }';",
+    'document.head.append(style);',
+    '',
+  ].join('\n'),
+};
+
+// Duck-typed narrowing (`in` + `typeof`), not `instanceof CSSStyleRule` — the rule was constructed
+// inside the iframe's own realm, and cross-realm `instanceof` against the TOP window's global
+// constructor is always false even for a genuine CSSStyleRule (same cross-realm hazard as this
+// file's other null-checks-instead-of-`instanceof` calls above).
+function hasSelectorText(rule: CSSRule): rule is CSSRule & { selectorText: string } {
+  return 'selectorText' in rule && typeof rule.selectorText === 'string';
+}
+
+test('a non-Tailwind entry that injects its own <style> at runtime still gets the hover-selector rewrite', async () => {
+  frame = await SandboxFrame.create();
+  await frame.mount(payloadFor(RUNTIME_INJECTED_STYLE_FIXTURE, 'dom'));
+  const doc = frameDocument();
+  const rule = Array.from(doc.styleSheets)
+    .flatMap((sheet) => Array.from(sheet.cssRules))
+    .find((candidate) => hasSelectorText(candidate) && candidate.selectorText.includes('rt-hover'));
+  if (!rule || !hasSelectorText(rule))
+    throw new Error("the entry-injected .rt-hover rule was not found in the frame's stylesheets");
+  expect(rule.selectorText).toBe('.rt-hover:is(:hover, .__ac-hover)');
+});
+
 // Reviewer-flagged: T8 deliberately never virtualizes setTimeout/setInterval, so a payload's user
 // code may schedule a real timer that outlives its own mount. Without lifecycle cleanup, payload
 // A's stray timer firing after payload B has been mounted would throw and post a `scope: 'mount'`

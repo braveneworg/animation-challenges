@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
+import { CATALOG_TEST_TIMEOUT_MS } from '@/challenges/catalog-timeouts';
 import { challengeRegistry } from '@/challenges/registry';
 import { DEFAULT_GRADER_TIMEOUT_MS } from '@/challenges/types';
 import { prepareSubmission } from '@/runner/pipeline';
@@ -11,13 +12,13 @@ const { challenges } = challengeRegistry;
 const autoGraded = challenges.filter((challenge) => challenge.gradeMode !== 'rubric');
 const rubricOnly = challenges.filter((challenge) => challenge.gradeMode === 'rubric');
 
-// vitest.config.ts caps every catalog-project test at this per-test ceiling. Rule 5/6 below pass
-// `graderTimeoutMs + GRADE_RUN_MARGIN_MS` as their OWN per-test override, and vitest honors an
-// override even past the project ceiling — so the ceiling config alone cannot stop a future
-// challenge from quietly requesting a longer run. The `toBeLessThanOrEqual` guard inside each test
-// body below is what actually enforces the budget, and it fails before the expensive grade run
-// rather than after a mysterious 60s timeout.
-const CATALOG_TEST_TIMEOUT_MS = 60_000;
+// vitest.config.ts imports the SAME `CATALOG_TEST_TIMEOUT_MS` (from '@/challenges/catalog-timeouts')
+// for the catalog project's `testTimeout`, so the two ceilings can never drift independently. Rule
+// 5/6 below pass `graderTimeoutMs + GRADE_RUN_MARGIN_MS` as their OWN per-test override, and vitest
+// honors an override even past the project ceiling — so the ceiling config alone cannot stop a
+// future challenge from quietly requesting a longer run. The `toBeLessThanOrEqual` guard inside
+// each test body below is what actually enforces the budget, and it fails before the expensive
+// grade run rather than after a mysterious 60s timeout.
 const GRADE_RUN_MARGIN_MS = 20_000;
 const MAX_GRADER_TIMEOUT_MS = CATALOG_TEST_TIMEOUT_MS - GRADE_RUN_MARGIN_MS;
 

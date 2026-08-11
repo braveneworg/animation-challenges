@@ -70,6 +70,22 @@ describe('prepareSubmission', () => {
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(2);
   });
 
+  test('a dom submission with an extra .html file beyond index.html is a diagnostic', () => {
+    const result = prepareSubmission({ 'index.html': '<p>x</p>', 'extra.html': '<p>y</p>' }, 'dom');
+    assertFailed(result);
+    expect(
+      result.diagnostics.some((d) => d.path === 'extra.html' && d.message.includes('only index.html is mounted')),
+    ).toBe(true);
+  });
+
+  test('an unsupported file type is a diagnostic', () => {
+    const result = prepareSubmission({ 'index.html': '<p>x</p>', 'data.json': '{"a":1}' }, 'dom');
+    assertFailed(result);
+    expect(result.diagnostics.some((d) => d.path === 'data.json' && d.message.includes('unsupported file type'))).toBe(
+      true,
+    );
+  });
+
   test('unresolvable relative imports and cycles surface as diagnostics via the link probe', () => {
     const missing = prepareSubmission({ 'index.ts': "import { x } from './nope';\nvoid x;" }, 'module');
     assertFailed(missing);

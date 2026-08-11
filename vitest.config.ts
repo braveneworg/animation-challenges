@@ -1,6 +1,7 @@
 import { playwright } from '@vitest/browser-playwright';
 import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 
+import { CATALOG_TEST_TIMEOUT_MS } from './src/challenges/catalog-timeouts.ts';
 import viteConfig from './vite.config.ts';
 
 // Extends the app's real Vite config rather than restating it, so plugins, aliases, and any
@@ -45,7 +46,7 @@ export default mergeConfig(
           test: {
             name: 'catalog',
             include: ['src/**/*.catalog.test.{ts,tsx}'],
-            testTimeout: 60_000,
+            testTimeout: CATALOG_TEST_TIMEOUT_MS,
             browser: {
               enabled: true,
               provider: playwright(),
