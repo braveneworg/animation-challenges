@@ -7,6 +7,7 @@ import {
   parseHostMessage,
   PROTOCOL_VERSION,
   toMountPayload,
+  type MountPayload,
 } from '@/runner/protocol';
 import type { PreparedSubmission } from '@/runner/types';
 import { prepareRequestSchema, prepareResponseSchema } from '@/runner/worker-protocol';
@@ -75,6 +76,41 @@ describe('frame messages', () => {
       },
     };
     expect(parseFrameMessage(graded)).toBeNull();
+  });
+});
+
+describe('mount and mounted messages', () => {
+  // Exercises the nullable fields the brief's own test list skipped: htmlFile present,
+  // entryPath null, a diagnostic-free prepared module — this is the DOM-runtime shape
+  // toMountPayload never produces for a module challenge, so it needs its own coverage.
+  const mountPayload: MountPayload = {
+    challengeId: 'dom-basics/demo',
+    runtime: 'dom',
+    wantsTailwind: false,
+    modules: [{ path: 'index.ts', code: 'export {};', imports: [] }],
+    cssFiles: [{ path: 'styles.css', source: '.x{}' }],
+    htmlFile: { path: 'index.html', source: '<div id="app"></div>' },
+    entryPath: null,
+    sources: {
+      'index.ts': 'export {};',
+      'styles.css': '.x{}',
+      'index.html': '<div id="app"></div>',
+    },
+  };
+
+  test('round-trips a mount message exercising the nullable fields', () => {
+    const message = { v: PROTOCOL_VERSION, type: 'mount', mount: mountPayload };
+    expect(parseHostMessage(message)).toEqual(message);
+  });
+
+  test('round-trips a mounted message', () => {
+    const message = { v: PROTOCOL_VERSION, type: 'mounted', challengeId: 'dom-basics/demo' };
+    expect(parseFrameMessage(message)).toEqual(message);
+  });
+
+  test('rejects a mount payload with an invalid runtime', () => {
+    const message = { v: PROTOCOL_VERSION, type: 'mount', mount: { ...mountPayload, runtime: 'svelte' } };
+    expect(parseHostMessage(message)).toBeNull();
   });
 });
 
