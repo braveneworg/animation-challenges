@@ -17,6 +17,7 @@ export class TranspilerClient {
   #worker: Worker;
   #nextRequestId = 1;
   #pending = new Map<number, PendingRequest>();
+  #disposed = false;
 
   constructor() {
     this.#worker = new Worker(new URL('./transpile.worker.ts', import.meta.url), { type: 'module' });
@@ -47,6 +48,7 @@ export class TranspilerClient {
   }
 
   prepare(files: ChallengeFiles, runtime: RuntimeKind): Promise<PrepareResult> {
+    if (this.#disposed) return Promise.reject(new Error('TranspilerClient is disposed'));
     const requestId = this.#nextRequestId;
     this.#nextRequestId += 1;
     return new Promise<PrepareResult>((resolve, reject) => {
@@ -56,6 +58,7 @@ export class TranspilerClient {
   }
 
   dispose(): void {
+    this.#disposed = true;
     this.#worker.terminate();
     for (const [requestId, pending] of this.#pending) {
       this.#pending.delete(requestId);
