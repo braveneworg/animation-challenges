@@ -20,3 +20,7 @@ server/db.json
 # Test artifacts
 playwright-report/
 test-results/
+
+# Vitest browser mode writes these next to the failing test file
+__screenshots__/
+.vitest-attachments/
