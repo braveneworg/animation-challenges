@@ -223,3 +223,27 @@ test('a react default export that is a class component rejects the mount with a 
     ),
   ).rejects.toThrow(/App\.tsx/);
 });
+
+// Reviewer-flagged: T8 deliberately never virtualizes setTimeout/setInterval, so a payload's user
+// code may schedule a real timer that outlives its own mount. Without lifecycle cleanup, payload
+// A's stray timer firing after payload B has been mounted would throw and post a `scope: 'mount'`
+// error misattributed to B — a healthy mount silently poisoned by a completely unrelated payload.
+test('a stray real timer from a previous mount does not misattribute an error to a later mount', async () => {
+  frame = await SandboxFrame.create();
+  const errors: string[] = [];
+  frame.onMessage((message) => {
+    if (message.type === 'error') errors.push(message.message);
+  });
+  await frame.mount(
+    payloadFor({ 'index.ts': "setTimeout(() => { throw new Error('stray timer boom'); }, 500);\n" }, 'module'),
+  );
+  // B's `mount()` only resolves once B's own 'mounted' message arrives, which is strictly AFTER
+  // B's `resetStage()` ran (it is the first statement in `mount()`) — so by the time this await
+  // resolves, A's stray timer has already been cancelled (fixed) or is still ticking toward its
+  // own 500ms deadline, started back when A was mounted (buggy).
+  await frame.mount(payloadFor({ 'index.ts': "console.log('b-mounted');\n" }, 'module'));
+  // Real wall-clock wait comfortably past A's original 500ms deadline.
+  await new Promise<void>((resolve) => setTimeout(resolve, 700));
+  expect(errors).toHaveLength(0);
+  expect(frame.isAlive).toBe(true);
+});

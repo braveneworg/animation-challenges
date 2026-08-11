@@ -38,6 +38,41 @@ export function startHarness(win: Window & typeof globalThis): void {
 
   const loopGuard = installLoopGuard(win);
 
+  // Timer LIFECYCLE tracking — not time virtualization; determinism still comes entirely from
+  // TimeController (T8 deliberately never patches setTimeout/setInterval). User code may schedule
+  // a real timer that outlives its own mount; without this, a stray timer from payload A firing
+  // after payload B has been mounted would throw and post a `scope: 'mount'` error misattributed
+  // to whichever payload happens to be live when it fires. Installed AFTER `installLoopGuard`
+  // (whose own perpetual reset `setInterval` call above already ran through the untouched native,
+  // so it is never tracked/cleared here) and before any user code can run (a mount only happens in
+  // response to a 'mount' message, which cannot arrive before `ready` is posted at the end of this
+  // function). `clearTimeout` and `clearInterval` are spec-interchangeable — both cancel either
+  // kind of pending timer — so one native clear call retires any tracked id regardless of which
+  // scheduling call created it.
+  const nativeTimerSetTimeout = win.setTimeout.bind(win);
+  const nativeTimerSetInterval = win.setInterval.bind(win);
+  const nativeTimerClearTimeout = win.clearTimeout.bind(win);
+  const nativeTimerClearInterval = win.clearInterval.bind(win);
+  const trackedTimerIds = new Set<number>();
+  win.setTimeout = (handler, timeout, ...args) => {
+    const id = nativeTimerSetTimeout(handler, timeout, ...args);
+    trackedTimerIds.add(id);
+    return id;
+  };
+  win.setInterval = (handler, timeout, ...args) => {
+    const id = nativeTimerSetInterval(handler, timeout, ...args);
+    trackedTimerIds.add(id);
+    return id;
+  };
+  win.clearTimeout = (id) => {
+    if (id !== undefined) trackedTimerIds.delete(id);
+    nativeTimerClearTimeout(id);
+  };
+  win.clearInterval = (id) => {
+    if (id !== undefined) trackedTimerIds.delete(id);
+    nativeTimerClearInterval(id);
+  };
+
   let environment: SandboxEnvironment = DEFAULT_ENVIRONMENT;
   let lastMount: MountPayload | null = null;
   let installedTime: InstalledTimeController | null = null;
@@ -64,6 +99,14 @@ export function startHarness(win: Window & typeof globalThis): void {
     for (const url of blobUrls) URL.revokeObjectURL(url);
     blobUrls = [];
     moduleExports = {};
+    // Cancel every real timer the PREVIOUS payload left running, so it can never fire (and throw,
+    // or otherwise touch state) against whatever payload is mounted next. Safe against the live
+    // TimeController's own pacing: that controller's `nativeSetTimeout`-based macrotask helper is
+    // captured fresh on each `installTimeController` call inside `mount()`, which always runs
+    // AFTER this `resetStage()` — so there is nothing of the upcoming mount's to clear yet, and the
+    // PRIOR mount's pacing is already abandoned (nothing still awaits it) by the time we get here.
+    for (const id of trackedTimerIds) nativeTimerClearTimeout(id);
+    trackedTimerIds.clear();
     loopGuard.reset();
     restoreMatchMedia?.();
     restoreMatchMedia = null;
