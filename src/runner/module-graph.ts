@@ -1,39 +1,11 @@
 import { parse } from 'acorn';
 
+import { isAstNode, walk } from '@/runner/ast';
 import type { ImportRecord, PreparedModule } from '@/runner/types';
 
 export interface CollectedImports {
   imports: readonly ImportRecord[];
   problems: readonly string[];
-}
-
-interface AstNode {
-  type: string;
-  start: number;
-  end: number;
-}
-
-function isAstNode(value: unknown): value is AstNode & Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'type' in value &&
-    typeof value.type === 'string' &&
-    'start' in value &&
-    typeof value.start === 'number' &&
-    'end' in value &&
-    typeof value.end === 'number'
-  );
-}
-
-function walk(value: unknown, visit: (node: AstNode & Record<string, unknown>) => void): void {
-  if (Array.isArray(value)) {
-    for (const item of value) walk(item, visit);
-    return;
-  }
-  if (!isAstNode(value)) return;
-  visit(value);
-  for (const child of Object.values(value)) walk(child, visit);
 }
 
 function readStringLiteral(value: unknown): { value: string; start: number; end: number } | null {

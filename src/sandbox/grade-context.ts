@@ -61,6 +61,12 @@ export interface GradeContextDeps {
   remount: (environment: SandboxEnvironment) => Promise<void>;
 }
 
+/**
+ * Near-duplicate of `forEachRule` in `src/sandbox/environment.ts` — deliberately not shared.
+ * Grading needs to see individual keyframe steps (e.g. `hasKeyframesRule`, `cssRules()` used by
+ * challenge graders), so this walker additionally descends into `CSSKeyframesRule` children;
+ * `environment.ts`'s walker never needs those and stays shallower.
+ */
 function forEachSheetRule(doc: Document, visit: (rule: CSSRule) => void): void {
   const walkRules = (rules: CSSRuleList): void => {
     for (const rule of Array.from(rules)) {

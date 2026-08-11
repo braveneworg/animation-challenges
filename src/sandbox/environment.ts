@@ -25,6 +25,13 @@ export function patchMatchMedia(win: Window & typeof globalThis, forcedReducedMo
   };
 }
 
+/**
+ * Near-duplicate of `forEachSheetRule` in `src/sandbox/grade-context.ts` — deliberately not
+ * shared. This walker only needs to reach `@media`/other grouping rules to flip reduced-motion
+ * blocks and rewrite `:hover` selectors; it never needs to see the individual keyframe steps
+ * inside a `@keyframes` block, so it does not descend into `CSSKeyframesRule` children the way
+ * grade-context's walker does for grading assertions like `hasKeyframesRule`.
+ */
 function forEachRule(rules: CSSRuleList, visit: (rule: CSSRule) => void): void {
   for (const rule of Array.from(rules)) {
     visit(rule);

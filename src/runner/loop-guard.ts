@@ -1,6 +1,8 @@
 import { parse } from 'acorn';
 import MagicString from 'magic-string';
 
+import { isAstNode, walk } from '@/runner/ast';
+
 /** The free identifier guarded code calls; the sandbox harness installs it globally before user code runs. */
 export const LOOP_GUARD_FN = '__acLoopGuard';
 
@@ -16,42 +18,6 @@ const LOOP_TYPES: ReadonlySet<string> = new Set([
   'ForInStatement',
   'ForOfStatement',
 ]);
-
-interface AstNode {
-  type: string;
-  start: number;
-  end: number;
-}
-
-function isAstNode(value: unknown): value is AstNode & Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'type' in value &&
-    typeof value.type === 'string' &&
-    'start' in value &&
-    typeof value.start === 'number' &&
-    'end' in value &&
-    typeof value.end === 'number'
-  );
-}
-
-/**
- * Structural AST walk. Deliberately not acorn-walk: its typings expose only the base node type,
- * which cannot be narrowed by `node.type` without a type assertion (banned by
- * `typescript/no-unsafe-type-assertion`). Recursing over own enumerable values visits every
- * child node and array of nodes; primitives and non-node objects (e.g. a Literal's `regex`
- * metadata, which has no start/end) are skipped by `isAstNode`.
- */
-function walk(value: unknown, visit: (node: AstNode & Record<string, unknown>) => void): void {
-  if (Array.isArray(value)) {
-    for (const item of value) walk(item, visit);
-    return;
-  }
-  if (!isAstNode(value)) return;
-  visit(value);
-  for (const child of Object.values(value)) walk(child, visit);
-}
 
 /**
  * Injects a guard call into every loop body of `code` (spec §6.6): `while`, `do…while`, `for`,
