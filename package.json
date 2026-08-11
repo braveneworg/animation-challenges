@@ -18,11 +18,12 @@
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
     "lint:no-disable": "node scripts/check-no-disable.mjs",
-    "test": "vitest run",
+    "test": "vitest run --project unit --project browser",
     "test:unit": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
+    "test:catalog": "vitest run --project catalog",
     "test:scripts": "node --test scripts/*.test.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm lint:no-disable && pnpm format:check && pnpm test && pnpm test:scripts"
+    "verify": "pnpm typecheck && pnpm lint && pnpm lint:no-disable && pnpm format:check && pnpm test && pnpm test:catalog && pnpm test:scripts"
   },
   "dependencies": {
     "@tailwindcss/browser": "4.3.3",
