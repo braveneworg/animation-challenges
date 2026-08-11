@@ -12,6 +12,18 @@ export interface Registry {
   errors: readonly RegistryError[];
 }
 
+/**
+ * Orders ids by code point rather than `localeCompare`, whose collation depends on the host's
+ * default locale and ICU build — a Node compiled with small-icu, or a machine with a different
+ * locale, can order the same catalog differently. Ids are ASCII kebab-case with a single slash,
+ * so a relational comparison is fully defined for them and identical everywhere.
+ */
+function compareIds(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 /** `./css-transitions/hover-lift.ts` -> `css-transitions/hover-lift` */
 function idFromModulePath(modulePath: string): string {
   return modulePath.replace(/^\.\//, '').replace(/\.ts$/, '');
@@ -69,7 +81,7 @@ export function buildRegistry(modules: Record<string, unknown>): Registry {
     }
   }
 
-  challenges.sort((a, b) => a.id.localeCompare(b.id));
+  challenges.sort((a, b) => compareIds(a.id, b.id));
 
   // Ids derive from module paths, but distinct keys can still collide once normalized
   // (e.g. `./foo.ts` and `foo.ts` both derive `foo`), so uniqueness is not structural.

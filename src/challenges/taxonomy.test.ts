@@ -40,6 +40,10 @@ describe('series', () => {
     expect(SERIES.map((series) => series.id)).toEqual([...SERIES_IDS]);
   });
 
+  it('has unique ids', () => {
+    expect(new Set(SERIES_IDS).size).toBe(SERIES_IDS.length);
+  });
+
   it('plans three members for every series', () => {
     for (const series of SERIES) {
       expect(series.plannedMembers).toBe(3);
