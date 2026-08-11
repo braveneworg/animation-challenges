@@ -1,43 +1,44 @@
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-import react from '@vitejs/plugin-react';
 import { playwright } from '@vitest/browser-playwright';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config';
 
-const rootDir = fileURLToPath(new URL('.', import.meta.url));
+import viteConfig from './vite.config.ts';
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      '@': resolve(rootDir, 'src'),
-    },
-  },
-  test: {
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: 'unit',
-          environment: 'node',
-          include: ['src/**/*.test.ts'],
-          exclude: ['src/**/*.browser.test.ts'],
-        },
-      },
-      {
-        extends: true,
-        plugins: [react()],
-        test: {
-          name: 'browser',
-          include: ['src/**/*.browser.test.{ts,tsx}'],
-          browser: {
-            enabled: true,
-            provider: playwright(),
-            headless: true,
-            instances: [{ browser: 'chromium' }],
+// Extends the app's real Vite config rather than restating it, so plugins, aliases, and any
+// future build settings apply to tests automatically instead of having to be duplicated by hand.
+// The browser project no longer declares `plugins: [react()]` of its own: `extends: true` already
+// inherits React and Tailwind from the merged root, and re-adding React would apply the JSX
+// transform twice. The `.tsx` browser tests below are what prove the inherited transform runs.
+export default mergeConfig(
+  viteConfig,
+  defineConfig({
+    test: {
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'unit',
+            environment: 'node',
+            // `.tsx` is included so a render test named `Foo.test.tsx` is collected rather than
+            // silently matching no project and exiting 0. `.browser.test.tsx` is excluded here so
+            // it still routes to the browser project alone.
+            include: ['src/**/*.test.{ts,tsx}'],
+            exclude: [...configDefaults.exclude, 'src/**/*.browser.test.{ts,tsx}'],
           },
         },
-      },
-    ],
-  },
-});
+        {
+          extends: true,
+          test: {
+            name: 'browser',
+            include: ['src/**/*.browser.test.{ts,tsx}'],
+            browser: {
+              enabled: true,
+              provider: playwright(),
+              headless: true,
+              instances: [{ browser: 'chromium' }],
+            },
+          },
+        },
+      ],
+    },
+  }),
+);
