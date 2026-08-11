@@ -1,5 +1,5 @@
 import { CATEGORIES, TOTAL_PLANNED_CHALLENGES } from '@/challenges/categories';
-import { SERIES_IDS } from '@/challenges/series';
+import { SERIES, SERIES_IDS } from '@/challenges/series';
 import type { Challenge, ChallengeFiles } from '@/challenges/types';
 
 /**
@@ -94,6 +94,48 @@ export function checkCatalogIntegrity(challenges: readonly CatalogEntry[]): stri
       violations.push(
         `${entry.id}: starter files [${starterNames.join(', ')}] do not match solution files [${solutionNames.join(', ')}]`,
       );
+    }
+  }
+
+  // Series membership (spec §4.2). Ceilings and consistency, not completeness: series fill up
+  // across Plans 03 and 06, so a partially authored series is legal. The last content batch owns
+  // tightening member counts to equality, alongside the category ceilings.
+  const membersBySeries = new Map<string, CatalogEntry[]>();
+  for (const entry of challenges) {
+    const ref = entry.series;
+    if (ref === undefined) continue;
+    const members = membersBySeries.get(ref.id) ?? [];
+    members.push(entry);
+    membersBySeries.set(ref.id, members);
+  }
+
+  for (const series of SERIES) {
+    const members = membersBySeries.get(series.id) ?? [];
+
+    if (members.length > series.plannedMembers) {
+      violations.push(`series "${series.id}": ${members.length} members exceeds the planned ${series.plannedMembers}`);
+    }
+
+    for (const member of members) {
+      if (member.series?.label !== series.label) {
+        violations.push(
+          `${member.id}: series label "${member.series?.label ?? ''}" does not match the series definition ` +
+            `"${series.label}"`,
+        );
+      }
+    }
+
+    const firstInCategory = new Map<string, string>();
+    for (const member of members) {
+      const existing = firstInCategory.get(member.categoryId);
+      if (existing === undefined) {
+        firstInCategory.set(member.categoryId, member.id);
+      } else {
+        violations.push(
+          `series "${series.id}": "${existing}" and "${member.id}" are both in category "${member.categoryId}" — ` +
+            `series members must come from distinct categories (spec §4.2)`,
+        );
+      }
     }
   }
 
