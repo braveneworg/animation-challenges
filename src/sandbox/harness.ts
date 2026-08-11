@@ -8,8 +8,12 @@ import {
   type MountPayload,
   type SandboxEnvironment,
 } from '@/runner/protocol';
+import { runWithTimeout } from '@/runner/run-with-timeout';
 import { safeString } from '@/runner/safe-string';
+import { AssertionLog } from '@/sandbox/assertion-log';
 import { applyForcedMediaToStyles, enableSimulatedHover, patchMatchMedia } from '@/sandbox/environment';
+import { buildGradeContext } from '@/sandbox/grade-context';
+import { loadGrader } from '@/sandbox/grader-registry';
 import { installLoopGuard } from '@/sandbox/loop-guard-runtime';
 import { toExportsRecord } from '@/sandbox/module-exports';
 import { mountReactComponent, type MountedRoot } from '@/sandbox/react-mount';
@@ -30,11 +34,11 @@ export function startHarness(win: Window & typeof globalThis): void {
     win.parent.postMessage(message, win.origin);
   };
 
-  // Natives captured before any clock install; the virtual clock patches rAF and now(), never timers.
+  // Natives captured before any clock install; the virtual clock patches rAF and now(), never
+  // timers. `nativeSetTimeout` is the grade watchdog's timer (a virtual clock must never be able to
+  // starve it) and `nativePerformanceNow` timestamps a report's `durationMs`.
   const nativeSetTimeout = win.setTimeout.bind(win);
   const nativePerformanceNow = win.performance.now.bind(win.performance);
-  void nativeSetTimeout; // used by Task 13's grade wiring
-  void nativePerformanceNow;
 
   const loopGuard = installLoopGuard(win);
 
@@ -80,7 +84,15 @@ export function startHarness(win: Window & typeof globalThis): void {
   let blobUrls: string[] = [];
   let reactRoot: MountedRoot | null = null;
   let moduleExports: Readonly<Record<string, unknown>> = {};
-  void moduleExports; // read by Task 13's grade wiring; assigned now so `mount`'s shape is already final
+  // Guards the timer-sweep hazard (spec §6.7): TimeController's `stepFrames`/`settle` pacing runs
+  // its macrotasks through the timer-lifecycle wrapper below, so `resetStage()` clearing every
+  // tracked timer id would cancel a LIVE grade's pending pacing timer out from under it. The host
+  // protocol drives mount -> grade sequentially and never sends `mount`/`reset`/`replay` while a
+  // grade is outstanding, so this should never trip; it exists as a defensive backstop in case a
+  // future host bug (or a malformed/duplicated message) violates that invariant. `handle` never
+  // serializes message processing (each arrival is dispatched via `void handle(message)`), so
+  // without this flag such a message would run concurrently with `grade` instead of queuing.
+  let gradeInFlight = false;
 
   // Console forwarding (spec §6.3): original behaviour intact, every level mirrored to the host.
   for (const level of ['log', 'info', 'warn', 'error'] as const) {
@@ -190,6 +202,74 @@ export function startHarness(win: Window & typeof globalThis): void {
     post({ v: PROTOCOL_VERSION, type: 'mounted', challengeId: payload.challengeId });
   };
 
+  const grade = async (challengeId: string, timeoutMs: number): Promise<void> => {
+    const payload = lastMount;
+    if (installedTime === null || payload === null) {
+      post({
+        v: PROTOCOL_VERSION,
+        type: 'error',
+        scope: 'grade',
+        message: 'grade requested before mount',
+        stack: null,
+      });
+      return;
+    }
+    const startedAt = nativePerformanceNow();
+    const log = new AssertionLog();
+    const ctx = buildGradeContext({
+      win,
+      doc,
+      stage,
+      // Read per call: setReducedMotion remounts, which installs a fresh controller.
+      time: () => {
+        const current = installedTime;
+        if (current === null) throw new Error('no time controller — the frame is between mounts');
+        return current.controller;
+      },
+      nativeNextFrame: () => {
+        const current = installedTime;
+        if (current === null) throw new Error('no time controller — the frame is between mounts');
+        return current.nativeNextFrame();
+      },
+      moduleExports: () => moduleExports,
+      sources: payload.sources,
+      log,
+      environment: () => environment,
+      remount: async (nextEnvironment) => {
+        environment = nextEnvironment;
+        await mount(payload);
+      },
+    });
+    const grader = await loadGrader(challengeId);
+    const outcome =
+      grader === null
+        ? {
+            threw: {
+              message: `no grader is registered for "${challengeId}" — expected src/challenges/${challengeId}.grade.ts`,
+              stack: null,
+            },
+            timedOut: false,
+          }
+        : await runWithTimeout(grader(ctx), timeoutMs, nativeSetTimeout);
+    const assertions = log.records;
+    post({
+      v: PROTOCOL_VERSION,
+      type: 'graded',
+      report: {
+        challengeId,
+        passed:
+          assertions.length > 0 &&
+          assertions.every((record) => record.ok) &&
+          outcome.threw === null &&
+          !outcome.timedOut,
+        assertions,
+        threw: outcome.threw,
+        timedOut: outcome.timedOut,
+        durationMs: nativePerformanceNow() - startedAt,
+      },
+    });
+  };
+
   const handle = async (message: HostMessage): Promise<void> => {
     try {
       switch (message.type) {
@@ -197,22 +277,31 @@ export function startHarness(win: Window & typeof globalThis): void {
           environment = message.environment;
           break;
         case 'mount':
+          // See `gradeInFlight`'s declaration: the protocol never sends `mount` during a live
+          // grade, but ignoring it here (rather than sweeping the grade's pacing timers via
+          // `resetStage()`) turns a protocol violation into a loud host-side mount timeout instead
+          // of a corrupted, hanging grade.
+          if (gradeInFlight) break;
           await mount(message.mount);
           break;
         case 'grade':
-          post({
-            v: PROTOCOL_VERSION,
-            type: 'error',
-            scope: 'grade',
-            message: 'grading is not wired yet',
-            stack: null,
-          });
+          gradeInFlight = true;
+          try {
+            await grade(message.challengeId, message.timeoutMs);
+          } finally {
+            gradeInFlight = false;
+          }
           break;
         case 'reset':
+          // Same guard as 'mount' above — `resetStage()` is exactly the timer sweep the comment
+          // on `gradeInFlight` warns about.
+          if (gradeInFlight) break;
           resetStage();
           lastMount = null;
           break;
         case 'replay':
+          // Same guard — `replay` re-enters `mount()`, which itself starts with `resetStage()`.
+          if (gradeInFlight) break;
           if (lastMount !== null) await mount(lastMount);
           break;
       }
