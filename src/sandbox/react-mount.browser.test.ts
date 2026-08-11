@@ -85,3 +85,44 @@ test('a missing default export (undefined) is rejected with a teaching message',
   const el = makeContainer();
   expect(() => mountReactComponent(el, undefined, () => undefined)).toThrow(/App\.tsx/);
 });
+
+// `SomeClass.bind(null)` defeats the static class check above: a bound function stringifies as
+// `"function () { [native code] }"`, never `"class …"`, so the `.toString()` check cannot tell it
+// apart from a bound plain function — this bypass is provably undetectable ahead of render.
+//
+// IMPORTANT — verified empirically: binding a class that `extends Component` (the coordinator's
+// literal example) does NOT reproduce a bug. `class X extends Component` sets `X`'s own
+// [[Prototype]] internal slot to `Component` (that's what `extends` does at the constructor-object
+// level); a bound function's [[Prototype]] slot is spec'd to copy its target's, so `boundX`'s
+// prototype CHAIN still resolves through `Component` — and `boundX.prototype` (a plain property
+// read, not an own-property check) walks that chain to `Component.prototype`, whose
+// `isReactComponent` is truthy. React's own class-vs-function detection
+// (`shouldConstruct`/`createFiberFromTypeAndProps` in react-dom) reads exactly that property, not
+// `hasOwnProperty`, so it still (correctly, if accidentally) constructs the bound class via `new`
+// — which works, since `new` on a bound function properly forwards to the target's [[Construct]].
+// Confirmed directly against `mountReactComponent`: `class extends Component {...}.bind(null)`
+// renders with zero errors.
+//
+// The bypass is real for a class that does NOT extend anything carrying `isReactComponent` on its
+// static prototype chain (no `extends React.Component`/`PureComponent`) — exactly the case below.
+// There, `boundX.prototype` is genuinely `undefined` (no chain to walk), React's `shouldConstruct`
+// returns false, it calls the bound class directly as a function (no `new`), and V8 throws
+// `TypeError: Class constructor … cannot be invoked without 'new'`. The mount must still surface
+// the teaching message through `onError` for this, not that raw TypeError.
+test('a bound class component default export (not extending Component) reports the teaching message through onError', async () => {
+  const el = makeContainer();
+  class BareClassApp {
+    render(): ReactElement {
+      return createElement('p', null, 'bound bare class');
+    }
+  }
+  const BoundBareClassApp = BareClassApp.bind(null);
+  const errors: unknown[] = [];
+  mounted = mountReactComponent(el, BoundBareClassApp, (error) => {
+    errors.push(error);
+  });
+  await nextFrame();
+  expect(errors).toHaveLength(1);
+  const [error] = errors;
+  expect(error instanceof Error && /App\.tsx/.test(error.message)).toBe(true);
+});

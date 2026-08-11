@@ -22,6 +22,25 @@ interface BoundaryState {
   failed: boolean;
 }
 
+const NOT_A_FUNCTION_COMPONENT_MESSAGE =
+  'App.tsx must default-export a plain function component (`export default function App() { … }`)';
+
+// `SomeClass.bind(null)` defeats the static check below (see its comment): a bound function
+// stringifies as `"function () { [native code] }"`, never `"class …"`. When the bound value's
+// static prototype chain does NOT carry `isReactComponent` (i.e. it doesn't extend
+// `React.Component`/`PureComponent`), React's own class-vs-function detection also misses it —
+// it calls the bound class directly, no `new`, and the engine throws this exact TypeError. That
+// bypass is provably undetectable ahead of render (see the static check's comment for why), so it
+// is caught here instead and rewritten to the same teaching message the static check throws.
+const BOUND_CLASS_RENDER_ERROR = /Class constructor.*cannot be invoked without 'new'/;
+
+function normalizeRenderError(error: unknown): unknown {
+  if (error instanceof TypeError && BOUND_CLASS_RENDER_ERROR.test(error.message)) {
+    return new Error(NOT_A_FUNCTION_COMPONENT_MESSAGE, { cause: error });
+  }
+  return error;
+}
+
 /** Spec §6.7: a render throw becomes an output-pane overlay message, never a dead frame. */
 class SandboxErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   override state: BoundaryState = { failed: false };
@@ -31,7 +50,7 @@ class SandboxErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   }
 
   override componentDidCatch(error: unknown): void {
-    this.props.onError(error);
+    this.props.onError(normalizeRenderError(error));
   }
 
   override render(): ReactNode {
@@ -49,9 +68,15 @@ class SandboxErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 // check file presence statically). At this repo's build target (tsconfig `target: es2023`,
 // `erasableSyntaxOnly`), class declarations/expressions are never down-transpiled to function
 // factories, so `Function.prototype.toString` reliably starts with the literal `class` keyword for
-// every class and never for a plain function or arrow function — a standard, dependency-free class
-// detector. `memo`/`forwardRef` exotic components and `undefined` (missing default) are already
-// excluded by the `typeof` check, since neither is a function value.
+// every UNBOUND class. `memo`/`forwardRef` exotic components and `undefined` (missing default) are
+// already excluded by the `typeof` check, since neither is a function value.
+//
+// This static check is NOT complete: `.bind()` defeats it. A bound function's `.toString()` is
+// always `"function () { [native code] }"`, and a bound function has no OWN `.prototype` property
+// (`Object.hasOwn(bound, 'prototype')` is false) — no static inspection of the bound value itself
+// (name, length, prototype, toString source) can recover that its target was a class. That case is
+// provably undetectable ahead of render and is instead handled by `normalizeRenderError` above,
+// which recognizes the specific `TypeError` V8 throws when React ends up invoking a class directly.
 const componentSchema = z.custom<ComponentType>(
   (value) => typeof value === 'function' && !value.toString().startsWith('class'),
 );
@@ -67,7 +92,7 @@ export function mountReactComponent(
 ): MountedRoot {
   const parsed = componentSchema.safeParse(componentExport);
   if (!parsed.success) {
-    throw new Error('App.tsx must default-export a plain function component (`export default function App() { … }`)');
+    throw new Error(NOT_A_FUNCTION_COMPONENT_MESSAGE);
   }
   const root = createRoot(container);
   // Called outside any event handler, React's default scheduling would defer the initial commit

@@ -50,3 +50,29 @@ test('a SECOND wait covers classes injected after the first — each call proves
   await waitForTailwind(document, nextFrame);
   expect(translateY(late)).toBeCloseTo(-3, 1);
 }, 15_000);
+
+// The behavioral tests above prove uniqueness only indirectly, by racing a real Tailwind compile —
+// the mutation check for a reintroduced-recycled-probe bug showed the second-wait test can still
+// pass by coincidence (a background compile pass beats the assertion to the punch), so it is not a
+// reliable regression guard on its own. This test pins the MECHANISM directly and deterministically:
+// observe the actual probe elements `waitForTailwind` inserts across two sequential calls and
+// assert their class names differ, with no dependency on the Tailwind compiler's timing at all.
+test('waitForTailwind inserts a probe with a fresh, distinct class name on each call', async () => {
+  await loadTailwind(document);
+  const probeClassNames: string[] = [];
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof Element && node.hasAttribute('data-ac-tw-probe')) {
+          probeClassNames.push(node.className);
+        }
+      }
+    }
+  });
+  observer.observe(document.body, { childList: true });
+  await waitForTailwind(document, nextFrame);
+  await waitForTailwind(document, nextFrame);
+  observer.disconnect();
+  expect(probeClassNames).toHaveLength(2);
+  expect(new Set(probeClassNames).size).toBe(2);
+}, 15_000);
