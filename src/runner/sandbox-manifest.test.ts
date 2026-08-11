@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-
 import { describe, expect, test } from 'vitest';
+
+import sandboxHtml from '../../sandbox.html?raw';
+import viteConfigSource from '../../vite.config.ts?raw';
 
 const VENDOR_STEM_BY_SPECIFIER: Readonly<Record<string, string>> = {
   react: 'react',
@@ -10,6 +11,11 @@ const VENDOR_STEM_BY_SPECIFIER: Readonly<Record<string, string>> = {
   motion: 'motion',
   'motion/react': 'motion-react',
 };
+
+// Keys alone prove the module exists in the build graph — a stronger check than fs existence,
+// since it fails if the file is renamed even before anything ever imports it. The loader values
+// (dynamic `import()` functions) are never invoked.
+const vendorModules = import.meta.glob('../sandbox/vendor/*.ts');
 
 function importMapOf(html: string): Record<string, string> {
   const match = /<script type="importmap">([\s\S]*?)<\/script>/.exec(html);
@@ -28,26 +34,24 @@ function importMapOf(html: string): Record<string, string> {
 
 describe('sandbox.html manifest', () => {
   test('the import map covers exactly the six specifiers of spec §6.2 with dev vendor urls', () => {
-    const imports = importMapOf(readFileSync('sandbox.html', 'utf8'));
+    const imports = importMapOf(sandboxHtml);
     expect(Object.keys(imports).sort()).toEqual(Object.keys(VENDOR_STEM_BY_SPECIFIER).sort());
     for (const [specifier, stem] of Object.entries(VENDOR_STEM_BY_SPECIFIER)) {
       expect(imports[specifier]).toBe(`/src/sandbox/vendor/${stem}.ts`);
-      expect(existsSync(`src/sandbox/vendor/${stem}.ts`)).toBe(true);
+      expect(Object.keys(vendorModules)).toContain(`../sandbox/vendor/${stem}.ts`);
     }
   });
 
   test('sandbox.html declares the stage, the CSP meta, and the module entry', () => {
-    const html = readFileSync('sandbox.html', 'utf8');
-    expect(html).toContain('<div id="stage">');
-    expect(html).toContain('http-equiv="Content-Security-Policy"');
-    expect(html).toContain('/src/sandbox/main.ts');
+    expect(sandboxHtml).toContain('<div id="stage">');
+    expect(sandboxHtml).toContain('http-equiv="Content-Security-Policy"');
+    expect(sandboxHtml).toContain('/src/sandbox/main.ts');
   });
 
   test('vite.config.ts declares a build input for every vendor stem', () => {
-    const config = readFileSync('vite.config.ts', 'utf8');
     for (const stem of Object.values(VENDOR_STEM_BY_SPECIFIER)) {
-      expect(config.includes(`'${stem}'`)).toBe(true);
+      expect(viteConfigSource.includes(`'${stem}'`)).toBe(true);
     }
-    expect(config).toContain("resolve(rootDir, 'sandbox.html')");
+    expect(viteConfigSource).toContain("resolve(rootDir, 'sandbox.html')");
   });
 });
