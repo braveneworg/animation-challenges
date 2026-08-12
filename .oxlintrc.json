@@ -16,7 +16,15 @@
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "error",
     "jsx-a11y/alt-text": "error",
-    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }]
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+    // The repo's throwing type-narrowing assertion helpers (assertSuccess/assertFailure) are the
+    // mandated alternative to `if (cond) { expect(...) }` (vitest/no-conditional-expect). Without
+    // this, expect-expect flags any test whose only verification is one of these helpers as
+    // having no assertions.
+    "vitest/expect-expect": [
+      "error",
+      { "assertFunctionNames": ["expect", "expectTypeOf", "assert", "assertType", "assertSuccess", "assertFailure"] }
+    ]
   },
   "ignorePatterns": ["dist", "coverage", "node_modules", "server/db.json"],
   // Scoped to the one fixture that needs it: loop-guard.test.ts runs a `new Function`-compiled
