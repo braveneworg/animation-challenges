@@ -36,6 +36,20 @@
       "rules": {
         "typescript/no-implied-eval": "off"
       }
+    },
+    {
+      // The WAI-ARIA APG Window Splitter pattern requires an interactive, focusable
+      // `role="separator"` (tabIndex + arrow-key handling). `jsx-a11y/prefer-tag-over-role` wants
+      // the `<hr>` equivalent instead, but `<hr>` is a non-interactive element — giving it tabIndex
+      // and key/pointer handlers trips `no-noninteractive-tabindex` and
+      // `no-noninteractive-element-interactions`. The three rules can't be jointly satisfied for
+      // this legitimate pattern, so `prefer-tag-over-role` is scoped off for the one file that
+      // needs the interactive separator; `no-noninteractive-tabindex` and
+      // `no-noninteractive-element-interactions` stay on everywhere, including here.
+      "files": ["src/features/workspace/PaneSplitter.tsx"],
+      "rules": {
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
     }
   ]
 }
