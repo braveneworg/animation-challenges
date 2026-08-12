@@ -46,6 +46,10 @@ export function revealPreviewIframe(container: HTMLElement): void {
  * Spec §7.3: frame status lives in a hook, not the store. The frame is (re)created whenever
  * `environment` identity changes or `recreate` bumps the generation; the last mounted payload is
  * remembered and automatically remounted, because setEnvironment must precede mount (spec §6.3).
+ *
+ * `options.environment` MUST be referentially stable across renders (e.g. wrap it in `useMemo`).
+ * It is an effect dependency, so a new object identity on every render — even with identical
+ * field values — tears the frame down and recreates it on every render, never settling.
  */
 export function usePreviewFrame(options: { environment: SandboxEnvironment; enabled: boolean }): PreviewFrameApi {
   const { environment, enabled } = options;
