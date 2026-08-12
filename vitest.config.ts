@@ -24,7 +24,7 @@ export default mergeConfig(
           test: {
             name: 'unit',
             environment: 'node',
-            include: ['src/**/*.test.{ts,tsx}'],
+            include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
             exclude: [...configDefaults.exclude, 'src/**/*.browser.test.{ts,tsx}', 'src/**/*.catalog.test.{ts,tsx}'],
           },
         },
