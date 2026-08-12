@@ -17,14 +17,11 @@ interface PaneSplitterProps {
 
 /**
  * WAI-ARIA window splitter: focusable separator, arrow-key resize, pointer drag with capture.
- * Deliberately a `<div role="separator">`, not the `<hr>` oxlint's `jsx-a11y/prefer-tag-over-role`
- * would otherwise suggest: the WAI-ARIA APG Window Splitter pattern requires role="separator" to
- * be FOCUSABLE (tabIndex + arrow-key handling), and `<hr>` is a non-interactive element — adding
- * tabIndex/key or pointer handlers to it trips `jsx-a11y/no-noninteractive-tabindex` and
- * `no-noninteractive-element-interactions` instead. The two rules want mutually exclusive tags for
- * an interactive separator; `jsx-a11y/prefer-tag-over-role` is scoped off for this file in
- * `.oxlintrc.json` (a config-level override, not an inline disable comment — see that file's
- * comment for the full rationale).
+ * Deliberately a `<div role="separator">`: every tag/role combination for a FOCUSABLE
+ * `role="separator"` trips a different jsx-a11y rule under this repo's config (see
+ * `.oxlintrc.json`'s override comment for the full, evidence-based comparison across all three
+ * forms tried). This div form trips exactly one rule, `jsx-a11y/prefer-tag-over-role`, scoped off
+ * for this file in `.oxlintrc.json` (a config-level override, not an inline disable comment).
  */
 export function PaneSplitter({ index, sizes, onResize, containerRef, label }: PaneSplitterProps): React.JSX.Element {
   const dragRef = useRef<{ startX: number; startSizes: PaneSizes } | null>(null);

@@ -38,14 +38,24 @@
       }
     },
     {
-      // The WAI-ARIA APG Window Splitter pattern requires an interactive, focusable
-      // `role="separator"` (tabIndex + arrow-key handling). `jsx-a11y/prefer-tag-over-role` wants
-      // the `<hr>` equivalent instead, but `<hr>` is a non-interactive element — giving it tabIndex
-      // and key/pointer handlers trips `no-noninteractive-tabindex` and
-      // `no-noninteractive-element-interactions`. The three rules can't be jointly satisfied for
-      // this legitimate pattern, so `prefer-tag-over-role` is scoped off for the one file that
-      // needs the interactive separator; `no-noninteractive-tabindex` and
-      // `no-noninteractive-element-interactions` stay on everywhere, including here.
+      // The WAI-ARIA APG Window Splitter pattern requires a FOCUSABLE `role="separator"`
+      // (tabIndex + arrow-key handling). Every tag/role combination tried against this repo's real
+      // config (oxlint 1.77.0, --type-aware) trips a different jsx-a11y rule — evidence, not
+      // assumption, from actually running `pnpm lint` against each form in PaneSplitter.tsx:
+      //   - `<div role="separator" tabIndex={0} onKeyDown/onPointerDown/Move/Up>` (shipped): trips
+      //     ONLY `prefer-tag-over-role` (1 rule).
+      //   - `<hr role="separator" ...same attrs/handlers>`: trips `no-noninteractive-element-to-
+      //     interactive-role` (adding an interactive role to a non-interactive element) AND
+      //     `no-redundant-roles` (the same role is simultaneously flagged as redundant with hr's
+      //     own implicit role) — 2 rules, mutually contradictory on their own terms.
+      //   - bare `<hr ...same attrs/handlers, no role>` (relying on hr's implicit separator role):
+      //     trips `no-noninteractive-tabindex` and `no-noninteractive-element-interactions` (hr is
+      //     a non-interactive element) — 2 rules.
+      // No combination reaches zero; the div form is the minimal-footprint one, so
+      // `prefer-tag-over-role` alone is scoped off for this file. `no-noninteractive-tabindex`,
+      // `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`,
+      // and `no-redundant-roles` all stay on everywhere, including here — none of them fire against
+      // the shipped div form.
       "files": ["src/features/workspace/PaneSplitter.tsx"],
       "rules": {
         "jsx-a11y/prefer-tag-over-role": "off"
