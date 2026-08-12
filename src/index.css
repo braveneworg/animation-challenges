@@ -97,3 +97,38 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .markdown {
+    @apply text-foreground text-sm leading-relaxed;
+  }
+  .markdown p,
+  .markdown ul,
+  .markdown ol,
+  .markdown pre {
+    @apply my-2;
+  }
+  .markdown ul {
+    @apply list-disc pl-5;
+  }
+  .markdown ol {
+    @apply list-decimal pl-5;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3 {
+    @apply mt-4 mb-2 font-semibold;
+  }
+  .markdown code {
+    @apply bg-muted rounded px-1 py-0.5 font-mono text-[0.8125rem];
+  }
+  .markdown pre {
+    @apply bg-muted overflow-x-auto rounded-md p-3;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown a {
+    @apply underline underline-offset-4;
+  }
+}
