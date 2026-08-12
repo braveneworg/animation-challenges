@@ -126,6 +126,27 @@ function readDirtyProgress(storage: MemoryStorage): string[] {
   return [];
 }
 
+/** Same shape as `readDirtyProgress`, reading the `notes` field of the dirty envelope instead. */
+function readDirtyNotes(storage: MemoryStorage): string[] {
+  const raw = storage.getItem(STORAGE_KEYS.dirty);
+  if (raw === null) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    'schemaVersion' in parsed &&
+    parsed.schemaVersion === CURRENT_SCHEMA_VERSION &&
+    'data' in parsed &&
+    typeof parsed.data === 'object' &&
+    parsed.data !== null &&
+    'notes' in parsed.data &&
+    Array.isArray(parsed.data.notes)
+  ) {
+    return parsed.data.notes.filter((entry): entry is string => typeof entry === 'string');
+  }
+  return [];
+}
+
 /** Resolves once `signal()` is called, and lets the caller pause an in-flight async op until `release()` runs. */
 function makeRendezvous(): { signal: () => void; reached: Promise<void>; release: () => void; gate: Promise<void> } {
   let signal: (() => void) | undefined;
@@ -186,6 +207,30 @@ describe('writes', () => {
     await mirrored.upsertProgress({ ...initialProgressRecord('a/b', T_OLD), attempts: 1, updatedAt: T_NEW });
     await mirrored.flush();
     expect(readDirtyProgress(storage)).toEqual([]);
+  });
+
+  it('succeed locally and mark the note dirty when the mirror fails — no throw', async () => {
+    const { mirrored, local, remote, storage } = makeFixture();
+    remote.failUpserts = true;
+    const note: Note = { id: 'a/b', challengeId: 'a/b', body: 'local draft', updatedAt: T_OLD };
+    const result = await mirrored.saveNote(note);
+    await mirrored.flush();
+    expect(result).toEqual(note);
+    expect(await local.getNote('a/b')).toEqual(note);
+    expect(readDirtyNotes(storage)).toEqual(['a/b']);
+  });
+
+  it('clear the note dirty mark on the next successful mirror write of that note', async () => {
+    const { mirrored, remote, storage } = makeFixture();
+    remote.failUpserts = true;
+    const note: Note = { id: 'a/b', challengeId: 'a/b', body: 'local draft', updatedAt: T_OLD };
+    await mirrored.saveNote(note);
+    await mirrored.flush();
+    expect(readDirtyNotes(storage)).toEqual(['a/b']);
+    remote.failUpserts = false;
+    await mirrored.saveNote({ ...note, body: 'final draft', updatedAt: T_NEW });
+    await mirrored.flush();
+    expect(readDirtyNotes(storage)).toEqual([]);
   });
 });
 
@@ -250,6 +295,37 @@ describe('sync', () => {
     expect(await local.listAttempts('c/d')).toEqual([remoteAttempt]);
     expect(readDirtyProgress(storage)).toEqual([]);
     expect(remote.profile).not.toBeNull();
+  });
+
+  it('pushes dirty notes, pulls a remote-only note, and lets the newest updatedAt win', async () => {
+    const { mirrored, local, remote, storage } = makeFixture();
+    // Local note that never reached the server:
+    remote.failUpserts = true;
+    const dirtyNote: Note = { id: 'a/b', challengeId: 'a/b', body: 'local draft, never synced', updatedAt: T_OLD };
+    await mirrored.saveNote(dirtyNote);
+    await mirrored.flush();
+    remote.failUpserts = false;
+
+    // Remote knows a note local has never seen:
+    const remoteOnlyNote: Note = { id: 'c/d', challengeId: 'c/d', body: 'remote only', updatedAt: T_NEW };
+    remote.notes.set('c/d', remoteOnlyNote);
+
+    // Both sides know 'e/f'; the mirror write below lands the stale local copy on the
+    // server, then the server independently receives a newer edit from elsewhere —
+    // reconcile must prefer that newer remote copy over the (not dirty) stale local one.
+    const localStaleNote: Note = { id: 'e/f', challengeId: 'e/f', body: 'stale local', updatedAt: T_OLD };
+    await mirrored.saveNote(localStaleNote);
+    await mirrored.flush();
+    const remoteFreshNote: Note = { id: 'e/f', challengeId: 'e/f', body: 'fresh remote', updatedAt: T_NEW };
+    remote.notes.set('e/f', remoteFreshNote);
+
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('synced');
+    expect(remote.notes.get('a/b')).toEqual(dirtyNote);
+    expect(await local.getNote('c/d')).toEqual(remoteOnlyNote);
+    expect(await local.getNote('e/f')).toEqual(remoteFreshNote);
+    expect(readDirtyNotes(storage)).toEqual([]);
   });
 
   it('keeps exactly the failed pushes dirty on a partial failure mid-sync', async () => {
