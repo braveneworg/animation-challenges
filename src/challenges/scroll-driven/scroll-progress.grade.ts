@@ -26,6 +26,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
     actual: `${maxScroll}px of scrollable range`,
     expected: 'at least 1000px',
   });
+  if (maxScroll < 1000) return;
 
   const timeline = ctx.computed(bar, 'animation-timeline');
   ctx.expect(timeline.startsWith('scroll('), {
