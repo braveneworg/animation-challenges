@@ -6,6 +6,8 @@ import { initialProgressRecord } from '@/data/progress-transitions';
 import {
   attemptsQueryOptions,
   dataKeys,
+  invalidateAllData,
+  invalidateChallengeData,
   noteQueryOptions,
   profileQueryOptions,
   progressQueryOptions,
@@ -33,6 +35,59 @@ describe('queryOptions factories', () => {
     expect(await client.fetchQuery(noteQueryOptions(repo, 'a/b'))).toBeNull();
     expect((await client.fetchQuery(profileQueryOptions(repo))).id).toBe('local');
     expect(client.getQueryData(dataKeys.progress())).toEqual([initialProgressRecord('a/b', T0)]);
+    client.clear();
+  });
+});
+
+/** Seeds every cache entry these tests care about, both for `MATCHING` and `OTHER` challenges. */
+function seedChallengeCaches(client: QueryClient): void {
+  client.setQueryData(dataKeys.progress(), []);
+  client.setQueryData(dataKeys.attempts(MATCHING), []);
+  client.setQueryData(dataKeys.note(MATCHING), null);
+  client.setQueryData(dataKeys.attempts(OTHER), []);
+  client.setQueryData(dataKeys.note(OTHER), null);
+  client.setQueryData(dataKeys.profile(), { id: 'local', displayName: 'Local user', createdAt: T0 });
+}
+
+function isStale(client: QueryClient, queryKey: readonly unknown[]): boolean {
+  return client.getQueryState(queryKey)?.isInvalidated ?? false;
+}
+
+const MATCHING = 'css-transitions/hover-lift';
+const OTHER = 'waapi/bounce-in';
+
+describe('invalidateChallengeData', () => {
+  it('invalidates progress and exactly the matching challenge — a different challenge and profile stay fresh', async () => {
+    const client = new QueryClient();
+    seedChallengeCaches(client);
+
+    await invalidateChallengeData(client, MATCHING);
+
+    expect(isStale(client, dataKeys.progress())).toBe(true);
+    expect(isStale(client, dataKeys.attempts(MATCHING))).toBe(true);
+    expect(isStale(client, dataKeys.note(MATCHING))).toBe(true);
+    expect(isStale(client, dataKeys.attempts(OTHER))).toBe(false);
+    expect(isStale(client, dataKeys.note(OTHER))).toBe(false);
+    expect(isStale(client, dataKeys.profile())).toBe(false);
+
+    client.clear();
+  });
+});
+
+describe('invalidateAllData', () => {
+  it('invalidates every entry under ["data"], for every challenge, including profile', async () => {
+    const client = new QueryClient();
+    seedChallengeCaches(client);
+
+    await invalidateAllData(client);
+
+    expect(isStale(client, dataKeys.progress())).toBe(true);
+    expect(isStale(client, dataKeys.attempts(MATCHING))).toBe(true);
+    expect(isStale(client, dataKeys.note(MATCHING))).toBe(true);
+    expect(isStale(client, dataKeys.attempts(OTHER))).toBe(true);
+    expect(isStale(client, dataKeys.note(OTHER))).toBe(true);
+    expect(isStale(client, dataKeys.profile())).toBe(true);
+
     client.clear();
   });
 });
