@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { RubricItem } from '@/challenges/types';
@@ -87,6 +87,8 @@ describe('ResultsPanel', () => {
     expect(confirmed).toHaveLength(0);
     fireEvent.click(screen.getByRole('checkbox', { name: /feels springy/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: /respects reduced motion/i }));
+    // shouldValidate on setValue clears the stale error reactively, without needing a second submit.
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     fireEvent.click(screen.getByRole('button', { name: /confirm rubric/i }));
     await screen.findByRole('button', { name: /confirm rubric/i });
     expect(confirmed).toHaveLength(1);

@@ -49,7 +49,10 @@ function RubricForm({ rubric, disabled, onConfirm, onRecordFail }: RubricFormPro
   const checkedIds = form.watch('checkedIds');
   const toggle = (id: string, checked: boolean): void => {
     const next = checked ? [...checkedIds, id] : checkedIds.filter((value) => value !== id);
-    form.setValue('checkedIds', next);
+    // shouldValidate: true re-runs the resolver immediately, so a stale "confirm every item" error
+    // from a prior failed submit clears as soon as the remaining boxes are checked, instead of
+    // sitting there until the user submits again.
+    form.setValue('checkedIds', next, { shouldValidate: true });
   };
   const submit = form.handleSubmit(() => onConfirm());
 

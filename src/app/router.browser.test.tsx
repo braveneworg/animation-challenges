@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -10,43 +9,27 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { RootLayout } from '@/app/layout/RootLayout';
-import { RepositoryProvider } from '@/app/repository-provider';
 import { RouteErrorScreen } from '@/app/RouteErrorScreen';
-import { routeTree } from '@/app/router';
-import { createAppRepository } from '@/data/app-repository';
-import { MemoryStorage } from '@/data/storage';
+import { renderApp } from '@/test/app-harness';
 
 // The workspace route (Task 10) is a real page now, not a placeholder: it reads the progress
-// repository through context, same as the rest of the app (see AppProviders). This helper mirrors
-// that composition — QueryClientProvider + RepositoryProvider around the router — so every route
-// renders under the same context the real app provides, exactly like src/test/app-harness.tsx's
-// renderApp does for the workspace's own tests.
-function renderAt(path: string): void {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const repository = createAppRepository({ apiBaseUrl: '', storage: new MemoryStorage() });
-  render(
-    <QueryClientProvider client={queryClient}>
-      <RepositoryProvider repository={repository}>
-        <RouterProvider router={router} />
-      </RepositoryProvider>
-    </QueryClientProvider>,
-  );
-}
-
+// repository through context, same as the rest of the app (see AppProviders). renderApp (the same
+// harness the workspace's own tests use) provides that composition — QueryClientProvider +
+// RepositoryProvider around the router — AND resets the shared client stores/localStorage between
+// tests, which a hand-rolled render here would not.
 describe('route tree', () => {
   it('renders the dashboard at /', async () => {
-    renderAt('/');
+    renderApp({ path: '/' });
     expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeTruthy();
   });
 
   it('renders the catalog at /challenges', async () => {
-    renderAt('/challenges');
+    renderApp({ path: '/challenges' });
     expect(await screen.findByRole('heading', { name: /challenges/i })).toBeTruthy();
   });
 
   it('renders the workspace with route params', async () => {
-    renderAt('/challenges/css-transitions/hover-lift');
+    renderApp({ path: '/challenges/css-transitions/hover-lift' });
     // The workspace (Task 10) is the real page now, not the id-echoing placeholder this test was
     // written against — the loader resolving the right challenge from route params shows up as its
     // title in the prompt pane instead.
@@ -54,12 +37,12 @@ describe('route tree', () => {
   });
 
   it('renders the not-found screen for an unknown path', async () => {
-    renderAt('/definitely-not-a-route');
+    renderApp({ path: '/definitely-not-a-route' });
     expect(await screen.findByRole('heading', { name: /not found/i })).toBeTruthy();
   });
 
   it('renders the not-found screen for an unknown challenge id', async () => {
-    renderAt('/challenges/css-transitions/definitely-not-a-challenge');
+    renderApp({ path: '/challenges/css-transitions/definitely-not-a-challenge' });
     expect(await screen.findByRole('heading', { name: /not found/i })).toBeTruthy();
   });
 
