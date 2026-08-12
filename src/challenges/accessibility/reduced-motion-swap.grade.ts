@@ -50,6 +50,10 @@ export async function grade(ctx: GradeContext): Promise<void> {
     message: 'The slide lands at the resting position',
     hint: 'The `to` frame ends at `translateX(0)`.',
   });
+  ctx.expectClose(pxNumber(ctx.computed(banner, 'opacity')), 1, OPACITY_EPSILON, {
+    message: 'The default entrance ends fully visible',
+    hint: 'The `to` frame carries `opacity: 1` — check the slide-in keyframes end fully opaque.',
+  });
 
   await ctx.setReducedMotion(true);
   const calmBanner = ctx.query('.banner');
