@@ -126,6 +126,22 @@ function readDirtyProgress(storage: MemoryStorage): string[] {
   return [];
 }
 
+/** Resolves once `signal()` is called, and lets the caller pause an in-flight async op until `release()` runs. */
+function makeRendezvous(): { signal: () => void; reached: Promise<void>; release: () => void; gate: Promise<void> } {
+  let signal: (() => void) | undefined;
+  let release: (() => void) | undefined;
+  const reached = new Promise<void>((resolve) => {
+    signal = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  if (signal === undefined || release === undefined) {
+    throw new Error('Promise executors must run synchronously');
+  }
+  return { signal, reached, release, gate };
+}
+
 describe('reads', () => {
   it('never touch the remote', async () => {
     const { mirrored, remote } = makeFixture();
@@ -261,6 +277,26 @@ describe('sync', () => {
     expect(result.pushed).toBeGreaterThanOrEqual(1);
   });
 
+  it('marks dirty a push failure for a record that was never dirty-tracked to begin with', async () => {
+    // Reconcile can decide to push a record purely because local is timestamp-newer than
+    // remote, with no prior dirty mark at all (e.g. seeded directly rather than through a
+    // mirrored write). If THAT push fails during sync, the record must come out of this
+    // sync dirty — finalization can't rely on "it was already in the dirty set," because
+    // it wasn't.
+    const { mirrored, local, remote, storage } = makeFixture();
+    const remoteRecord = initialProgressRecord('a/b', T_OLD);
+    remote.progress.set('a/b', remoteRecord);
+    const newerLocalRecord = { ...remoteRecord, attempts: 1, updatedAt: T_NEW };
+    await local.upsertProgress(newerLocalRecord); // bypasses the mirror: never dirty-tracked
+    expect(readDirtyProgress(storage)).toEqual([]);
+
+    remote.failUpserts = true;
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('partial');
+    expect(readDirtyProgress(storage)).toEqual(['a/b']);
+  });
+
   it('recovers on the next sync after the server returns', async () => {
     const { mirrored, remote, storage } = makeFixture();
     remote.failUpserts = true;
@@ -272,6 +308,44 @@ describe('sync', () => {
     remote.failPulls = false;
     expect((await mirrored.sync()).status).toBe('synced');
     expect(remote.progress.get('a/b')).toEqual(initialProgressRecord('a/b', T_OLD));
+    expect(readDirtyProgress(storage)).toEqual([]);
+  });
+});
+
+describe('sync finalization races', () => {
+  it('preserves a dirty mark set by a concurrent write while a sync is still in flight', async () => {
+    const { mirrored, remote, storage } = makeFixture();
+    // Gate the LAST remote call sync() makes (the profile push) so every other stage —
+    // both pulls, and the progress/notes/attempts plans and their pushes — has already run
+    // to completion using a snapshot taken before the concurrent write below ever happens.
+    const rendezvous = makeRendezvous();
+    const originalPutProfile = remote.putProfile.bind(remote);
+    remote.putProfile = (profile: Profile): Promise<Profile> => {
+      rendezvous.signal();
+      return rendezvous.gate.then(() => originalPutProfile(profile));
+    };
+
+    const syncPromise = mirrored.sync();
+    await rendezvous.reached; // sync() is now suspended exactly at the gated profile push.
+
+    // A write lands WHILE sync is in flight, for a record sync's already-computed plans
+    // never saw. Its mirror fails, so it must be marked dirty — and that mark must survive
+    // sync()'s finalization, per the binding rule "a failure marks the record dirty."
+    remote.failUpserts = true;
+    await mirrored.upsertProgress(initialProgressRecord('x/y', T_OLD));
+    await mirrored.flush();
+    remote.failUpserts = false;
+
+    rendezvous.release();
+    const result = await syncPromise;
+
+    expect(result.status).toBe('synced');
+    expect(readDirtyProgress(storage)).toEqual(['x/y']);
+
+    // Recovery is just the next sync() call — the surviving mark gets pushed and cleared.
+    const secondResult = await mirrored.sync();
+    expect(secondResult.status).toBe('synced');
+    expect(remote.progress.get('x/y')).toEqual(initialProgressRecord('x/y', T_OLD));
     expect(readDirtyProgress(storage)).toEqual([]);
   });
 });

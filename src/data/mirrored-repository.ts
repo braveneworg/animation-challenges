@@ -42,6 +42,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** `current` minus `pushed` (successfully synced this round), union `failed` (still dirty). */
+function mergeDirtyIds(current: readonly string[], pushed: readonly string[], failed: readonly string[]): string[] {
+  const survivors = current.filter((id) => !pushed.includes(id));
+  const merged = [...survivors];
+  for (const id of failed) {
+    if (!merged.includes(id)) {
+      merged.push(id);
+    }
+  }
+  return merged;
+}
+
 /**
  * Runs `action` over `items` one at a time, in call order, via a `.reduce`-built promise
  * chain — not a `for`/`while` loop with an `await` in its body (`no-await-in-loop` is an
@@ -141,11 +153,13 @@ export class MirroredProgressRepository implements ProgressRepository {
       await this.local.upsertProgress(record);
       pulled += 1;
     });
+    const pushedProgressIds: string[] = [];
     const stillDirtyProgress: string[] = [];
     await sequentialForEach(progressPlan.toPush, async (record) => {
       try {
         await remote.upsertProgress(record);
         pushed += 1;
+        pushedProgressIds.push(record.id);
       } catch (error) {
         stillDirtyProgress.push(record.id);
         errors.push(`progress ${record.id}: ${errorMessage(error)}`);
@@ -157,11 +171,13 @@ export class MirroredProgressRepository implements ProgressRepository {
       await this.local.saveNote(note);
       pulled += 1;
     });
+    const pushedNoteIds: string[] = [];
     const stillDirtyNotes: string[] = [];
     await sequentialForEach(notesPlan.toPush, async (note) => {
       try {
         await remote.saveNote(note);
         pushed += 1;
+        pushedNoteIds.push(note.id);
       } catch (error) {
         stillDirtyNotes.push(note.id);
         errors.push(`note ${note.id}: ${errorMessage(error)}`);
@@ -190,9 +206,39 @@ export class MirroredProgressRepository implements ProgressRepository {
       errors.push(`profile: ${errorMessage(error)}`);
     }
 
-    this.writeDirty({ progress: stillDirtyProgress, notes: stillDirtyNotes });
+    this.finalizeDirty(pushedProgressIds, stillDirtyProgress, pushedNoteIds, stillDirtyNotes);
 
     return { status: errors.length === 0 ? 'synced' : 'partial', pushed, pulled, errors };
+  }
+
+  /**
+   * Merges this sync's outcome into whatever dirty state exists RIGHT NOW, instead of
+   * blindly overwriting it with the outcome computed from this sync's start-of-run
+   * snapshot. A write can land WHILE this sync is still in flight (its own mirror attempt
+   * failing after this sync already captured `dirty` and its local snapshots) — that
+   * concurrent mark must survive finalization: the binding rule (spec §7.2) is "a failure
+   * marks the record dirty," full stop, not "unless a sync happens to be running."
+   *
+   * final = (dirty state read right now) MINUS (ids THIS sync successfully pushed)
+   *         UNION (ids that failed THIS sync's push)
+   *
+   * Known residual (accepted, not fixed here): a record this sync itself pushed
+   * successfully AND that a concurrent write re-marks dirty between that push and this
+   * finalization step still loses that later mark — the MINUS step above can't distinguish
+   * "still dirty from before my push" from "dirty again already, for a different reason"
+   * without per-write generation tracking. That is a larger design change, deferred.
+   */
+  private finalizeDirty(
+    pushedProgress: readonly string[],
+    failedProgress: readonly string[],
+    pushedNotes: readonly string[],
+    failedNotes: readonly string[],
+  ): void {
+    const current = this.readDirty();
+    this.writeDirty({
+      progress: mergeDirtyIds(current.progress, pushedProgress, failedProgress),
+      notes: mergeDirtyIds(current.notes, pushedNotes, failedNotes),
+    });
   }
 
   private mirror(
