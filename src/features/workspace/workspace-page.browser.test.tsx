@@ -8,6 +8,7 @@ import { renderApp } from '@/test/app-harness';
 
 const HOVER_LIFT = '/challenges/css-transitions/hover-lift';
 const HOVER_LIFT_ID = 'css-transitions/hover-lift';
+const BOUNCE_IN_CSS_KEYFRAMES = '/challenges/css-keyframes/bounce-in';
 
 describe('workspace desktop layout', () => {
   it('renders three panes with two keyboard-resizable separators persisting to the store', async () => {
@@ -151,6 +152,49 @@ describe('workspace desktop layout', () => {
     // entry is gone, taking the seeded revealed hint, spoiler flag, and draft with it.
     expect(useWorkspaceStore.getState().byChallenge[HOVER_LIFT_ID]).toBeUndefined();
   }, 40_000);
+});
+
+describe('workspace lastRunResult isolation', () => {
+  it('does not bleed a seeded run result from one challenge into another after SPA navigation', async () => {
+    await page.viewport(1280, 800);
+    renderApp({ path: BOUNCE_IN_CSS_KEYFRAMES });
+    await screen.findByRole('heading', { name: 'Bounce-in entrance' });
+
+    // Seed a run outcome directly on the store, exactly as a real Submit would leave it behind —
+    // the workspace store is a module-level singleton that survives SPA navigation even though
+    // WorkspaceScreen itself remounts (`key={challenge.id}`).
+    useWorkspaceStore
+      .getState()
+      .setLastRunResult({ passed: true, failures: [], durationMs: 42, completedAt: '2026-08-01T10:00:00.000Z' });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Results' }));
+    expect(await screen.findByText('Passed')).toBeTruthy();
+
+    // Navigate via a real in-app link to a sibling challenge in the same series.
+    fireEvent.click(await screen.findByRole('link', { name: 'Bounce-in via WAAPI' }));
+    await screen.findByRole('heading', { name: 'Bounce-in via WAAPI' });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Results' }));
+
+    // The new challenge must show the no-run-yet state, never the previous challenge's outcome.
+    expect(screen.queryByText('Passed')).toBeNull();
+    expect(await screen.findByText('Submit to see graded results here.')).toBeTruthy();
+  }, 20_000);
+
+  it('Clear resets a stale lastRunResult for the current challenge', async () => {
+    await page.viewport(1280, 800);
+    renderApp({ path: HOVER_LIFT });
+    await screen.findByRole('heading', { name: 'Hover lift' });
+    useWorkspaceStore
+      .getState()
+      .setLastRunResult({ passed: true, failures: [], durationMs: 42, completedAt: '2026-08-01T10:00:00.000Z' });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Results' }));
+    expect(await screen.findByText('Passed')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear and mark unsolved' }));
+
+    await waitFor(() => expect(screen.queryByText('Passed')).toBeNull());
+    expect(await screen.findByText('Submit to see graded results here.')).toBeTruthy();
+  }, 20_000);
 });
 
 describe('workspace mobile layout (390px)', () => {

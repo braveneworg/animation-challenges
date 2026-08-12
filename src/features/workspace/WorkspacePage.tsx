@@ -45,6 +45,15 @@ function WorkspaceScreen({ challenge }: { challenge: Challenge }): React.JSX.Ele
   const paneSizes = useWorkspaceStore((state) => state.paneSizes);
   const setPaneSizes = useWorkspaceStore((state) => state.setPaneSizes);
   const lastRunResult = useWorkspaceStore((state) => state.lastRunResult);
+  const setLastRunResult = useWorkspaceStore((state) => state.setLastRunResult);
+
+  // lastRunResult is store-global (Plan 04), but the Results panel it feeds is per-challenge.
+  // WorkspaceScreen remounts on challenge change (`key={challenge.id}` below), so this mount
+  // effect clears any outcome left behind by a previously viewed challenge — otherwise the
+  // Zustand value survives SPA navigation and gets displayed as if it belonged to this challenge.
+  useEffect(() => {
+    setLastRunResult(null);
+  }, [challenge.id, setLastRunResult]);
 
   // Working files: starter ∪ persisted drafts. The ref is the always-fresh copy Run/Submit read;
   // the state drives rendering. Store persistence is debounced (§6.6 autosave backstop).
@@ -171,12 +180,13 @@ function WorkspaceScreen({ challenge }: { challenge: Challenge }): React.JSX.Ele
   const handleClear = useCallback((): void => {
     persistDraft.cancel();
     resetChallengeState(challenge.id);
+    setLastRunResult(null);
     filesRef.current = { ...challenge.starter };
     setFiles(filesRef.current);
     void recordClear(repo, challenge.id)
       .then(() => invalidateChallengeData(queryClient, challenge.id))
       .catch((error: unknown) => console.error('failed to record clear', error));
-  }, [challenge, persistDraft, queryClient, repo, resetChallengeState]);
+  }, [challenge, persistDraft, queryClient, repo, resetChallengeState, setLastRunResult]);
 
   // Target preview mounts lazily, on first request, from the reference solution (spec §4:
   // "the target preview is the reference solution, executed").
