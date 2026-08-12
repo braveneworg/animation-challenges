@@ -6,7 +6,18 @@ import { MirroredProgressRepository } from '@/data/mirrored-repository';
 import { initialProgressRecord } from '@/data/progress-transitions';
 import type { Attempt, Note, Profile, ProgressRecord } from '@/data/records';
 import type { SyncableProgressStore } from '@/data/repository';
-import { MemoryStorage, STORAGE_KEYS } from '@/data/storage';
+import { MemoryStorage, STORAGE_KEYS, type KeyValueStorage } from '@/data/storage';
+
+/**
+ * `src/**` type-checks under tsconfig.app.json (browser lib, no `@types/node` in `types`), but
+ * the `unit` vitest project this file belongs to actually executes under Node (vitest.config.ts:
+ * `environment: 'node'`) — real `process.on('unhandledRejection', ...)` is exactly what's needed
+ * to pin the fix below. Declared locally rather than widening the app tsconfig's `types`.
+ */
+declare const process: {
+  on: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+  off: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+};
 
 const T_OLD = '2026-08-01T10:00:00.000Z';
 const T_NEW = '2026-08-02T10:00:00.000Z';
@@ -91,6 +102,36 @@ class FakeRemoteStore implements SyncableProgressStore {
   }
 }
 
+/** A KeyValueStorage whose `setItem` can be switched on to throw on demand — pins realistic
+ * `localStorage.setItem` QuotaExceededError behavior without touching real browser storage. */
+class FakeStorage implements KeyValueStorage {
+  private readonly store = new Map<string, string>();
+  failSetItem = false;
+  /** When set, only `setItem` calls whose key includes this substring throw. */
+  failSetItemForKeyIncluding: string | null = null;
+
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    const shouldFail =
+      this.failSetItem || (this.failSetItemForKeyIncluding !== null && key.includes(this.failSetItemForKeyIncluding));
+    if (shouldFail) {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    }
+    this.store.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+
+  keys(): readonly string[] {
+    return [...this.store.keys()];
+  }
+}
+
 interface Fixture {
   storage: MemoryStorage;
   local: LocalProgressRepository;
@@ -106,7 +147,7 @@ function makeFixture(): Fixture {
   return { storage, local, remote, mirrored };
 }
 
-function readDirtyProgress(storage: MemoryStorage): string[] {
+function readDirtyProgress(storage: KeyValueStorage): string[] {
   const raw = storage.getItem(STORAGE_KEYS.dirty);
   if (raw === null) return [];
   const parsed: unknown = JSON.parse(raw);
@@ -127,7 +168,7 @@ function readDirtyProgress(storage: MemoryStorage): string[] {
 }
 
 /** Same shape as `readDirtyProgress`, reading the `notes` field of the dirty envelope instead. */
-function readDirtyNotes(storage: MemoryStorage): string[] {
+function readDirtyNotes(storage: KeyValueStorage): string[] {
   const raw = storage.getItem(STORAGE_KEYS.dirty);
   if (raw === null) return [];
   const parsed: unknown = JSON.parse(raw);
@@ -423,5 +464,156 @@ describe('sync finalization races', () => {
     expect(secondResult.status).toBe('synced');
     expect(remote.progress.get('x/y')).toEqual(initialProgressRecord('x/y', T_OLD));
     expect(readDirtyProgress(storage)).toEqual([]);
+  });
+});
+
+describe('sync() never throws on a local storage failure', () => {
+  it('degrades to partial (not a rejection) when writing a pulled progress record locally fails', async () => {
+    // localStorage.setItem realistically throws QuotaExceededError; a pull-side local write
+    // (remote -> local) hitting that must not take the whole sync() down with it.
+    const localStorage = new FakeStorage();
+    const local = new LocalProgressRepository(localStorage, { now: NOW });
+    await local.getProfile(); // materialize the default profile before writes start failing
+    const remote = new FakeRemoteStore();
+    const remoteOnly = initialProgressRecord('c/d', T_NEW);
+    remote.progress.set('c/d', remoteOnly);
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: new MemoryStorage() });
+
+    localStorage.failSetItem = true;
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('partial');
+    expect(result.errors.some((message) => message.includes('c/d'))).toBe(true);
+    expect(result.pulled).toBe(0);
+    // The write never landed (storage still throwing) — confirmed via a non-failing reader
+    // path: listProgress() only reads, so it works even mid-quota-exceeded.
+    expect(await local.listProgress()).toEqual([]);
+  });
+
+  it('degrades to partial when writing a pulled note locally fails', async () => {
+    const localStorage = new FakeStorage();
+    const local = new LocalProgressRepository(localStorage, { now: NOW });
+    await local.getProfile();
+    const remote = new FakeRemoteStore();
+    const remoteOnlyNote: Note = { id: 'c/d', challengeId: 'c/d', body: 'remote only', updatedAt: T_NEW };
+    remote.notes.set('c/d', remoteOnlyNote);
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: new MemoryStorage() });
+
+    localStorage.failSetItem = true;
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('partial');
+    expect(result.errors.some((message) => message.includes('c/d'))).toBe(true);
+    expect(await local.listNotes()).toEqual([]);
+  });
+
+  it('degrades to partial when writing a pulled attempt locally fails, without discarding earlier progress', async () => {
+    const localStorage = new FakeStorage();
+    const local = new LocalProgressRepository(localStorage, { now: NOW });
+    await local.getProfile();
+    const remote = new FakeRemoteStore();
+    const remoteOnlyProgress = initialProgressRecord('c/d', T_NEW);
+    remote.progress.set('c/d', remoteOnlyProgress);
+    const remoteAttempt: Attempt = {
+      id: 'ra-1',
+      challengeId: 'c/d',
+      createdAt: T_NEW,
+      passed: false,
+      failures: [],
+      durationMs: 9,
+    };
+    remote.attempts.set('ra-1', remoteAttempt);
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: new MemoryStorage() });
+
+    // Progress records write successfully; only the attempts collection key fails, proving a
+    // single item's failure doesn't discard the sync's other, already-completed local writes.
+    localStorage.failSetItemForKeyIncluding = 'attempts';
+
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('partial');
+    expect(result.errors.some((message) => message.includes('ra-1'))).toBe(true);
+    expect(await local.listProgress()).toContainEqual(remoteOnlyProgress);
+    expect(await local.listAttempts('c/d')).toEqual([]);
+  });
+
+  it('finalizing dirty bookkeeping through a failing storage still resolves sync() without throwing', async () => {
+    // finalizeDirty's write is unconditional on every sync() call, and in production `local`
+    // and the mirror's own dirty-tracking `storage` are frequently the SAME backing storage
+    // (see createAppRepository) — so a real quota-exceeded error hits this write too, not just
+    // the two call sites above. Guarding it is still "dirty bookkeeping degrading silently."
+    const local = new LocalProgressRepository(new MemoryStorage(), { now: NOW });
+    const remote = new FakeRemoteStore();
+    remote.profile = await local.getProfile();
+    const dirtyStorage = new FakeStorage();
+    dirtyStorage.failSetItem = true;
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: dirtyStorage });
+
+    await expect(mirrored.sync()).resolves.toEqual(
+      expect.objectContaining({ status: expect.stringMatching(/^(synced|partial)$/) }),
+    );
+  });
+});
+
+describe('mirror() settle handlers never produce an unhandled rejection', () => {
+  it('a storage failure while marking a failed mirror write dirty is swallowed, and the caller promise still resolves', async () => {
+    const dirtyStorage = new FakeStorage();
+    dirtyStorage.failSetItem = true; // markDirty's writeDirty will throw every time
+    const local = new LocalProgressRepository(new MemoryStorage(), { now: NOW });
+    const remote = new FakeRemoteStore();
+    remote.failUpserts = true; // forces mirror()'s error branch, which calls markDirty
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: dirtyStorage });
+
+    const rejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const saved = await mirrored.upsertProgress(initialProgressRecord('a/b', T_OLD));
+      await mirrored.flush();
+      // Give any already-scheduled unhandledRejection event a turn to fire before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(saved).toEqual(initialProgressRecord('a/b', T_OLD));
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+    expect(rejections).toEqual([]);
+  });
+
+  it('a storage failure while clearing a dirty mark on mirror success is swallowed, with no unhandled rejection', async () => {
+    const dirtyStorage = new FakeStorage();
+    const local = new LocalProgressRepository(new MemoryStorage(), { now: NOW });
+    const remote = new FakeRemoteStore();
+    const mirrored = new MirroredProgressRepository({ local, remote, storage: dirtyStorage });
+
+    // Mark 'a/b' dirty first (mirror failure), then let the storage start failing before a
+    // second, successful mirror write tries to clear that mark.
+    remote.failUpserts = true;
+    await mirrored.upsertProgress(initialProgressRecord('a/b', T_OLD));
+    await mirrored.flush();
+    expect(readDirtyProgress(dirtyStorage)).toEqual(['a/b']);
+
+    remote.failUpserts = false;
+    dirtyStorage.failSetItem = true;
+
+    const rejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const saved = await mirrored.upsertProgress({
+        ...initialProgressRecord('a/b', T_OLD),
+        attempts: 1,
+        updatedAt: T_NEW,
+      });
+      await mirrored.flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(saved.attempts).toBe(1);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+    expect(rejections).toEqual([]);
   });
 });

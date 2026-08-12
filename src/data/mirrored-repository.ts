@@ -150,8 +150,12 @@ export class MirroredProgressRepository implements ProgressRepository {
 
     const progressPlan = reconcileByUpdatedAt(await this.local.listProgress(), remoteProgress, new Set(dirty.progress));
     await sequentialForEach(progressPlan.toWriteLocal, async (record) => {
-      await this.local.upsertProgress(record);
-      pulled += 1;
+      try {
+        await this.local.upsertProgress(record);
+        pulled += 1;
+      } catch (error) {
+        errors.push(`progress pull ${record.id}: ${errorMessage(error)}`);
+      }
     });
     const pushedProgressIds: string[] = [];
     const stillDirtyProgress: string[] = [];
@@ -168,8 +172,12 @@ export class MirroredProgressRepository implements ProgressRepository {
 
     const notesPlan = reconcileByUpdatedAt(await this.local.listNotes(), remoteNotes, new Set(dirty.notes));
     await sequentialForEach(notesPlan.toWriteLocal, async (note) => {
-      await this.local.saveNote(note);
-      pulled += 1;
+      try {
+        await this.local.saveNote(note);
+        pulled += 1;
+      } catch (error) {
+        errors.push(`note pull ${note.id}: ${errorMessage(error)}`);
+      }
     });
     const pushedNoteIds: string[] = [];
     const stillDirtyNotes: string[] = [];
@@ -186,8 +194,12 @@ export class MirroredProgressRepository implements ProgressRepository {
 
     const attemptsPlan = unionById(await this.local.listAllAttempts(), remoteAttempts);
     await sequentialForEach(attemptsPlan.toWriteLocal, async (attempt) => {
-      await this.local.addAttempt(attempt);
-      pulled += 1;
+      try {
+        await this.local.addAttempt(attempt);
+        pulled += 1;
+      } catch (error) {
+        errors.push(`attempt pull ${attempt.id}: ${errorMessage(error)}`);
+      }
     });
     await sequentialForEach(attemptsPlan.toPush, async (attempt) => {
       try {
@@ -228,17 +240,28 @@ export class MirroredProgressRepository implements ProgressRepository {
    * "still dirty from before my push" from "dirty again already, for a different reason"
    * without per-write generation tracking. That is a larger design change, deferred.
    */
+  /**
+   * Guarded like `markDirty`/`clearDirty`: this write is unconditional on every `sync()` call,
+   * and in production `local` and this mirror's own dirty-tracking `storage` are frequently the
+   * SAME backing store (see `createAppRepository`) — so a real quota-exceeded error can hit this
+   * write too, not just the per-item pull writes above. `sync()` must never throw regardless.
+   */
   private finalizeDirty(
     pushedProgress: readonly string[],
     failedProgress: readonly string[],
     pushedNotes: readonly string[],
     failedNotes: readonly string[],
   ): void {
-    const current = this.readDirty();
-    this.writeDirty({
-      progress: mergeDirtyIds(current.progress, pushedProgress, failedProgress),
-      notes: mergeDirtyIds(current.notes, pushedNotes, failedNotes),
-    });
+    try {
+      const current = this.readDirty();
+      this.writeDirty({
+        progress: mergeDirtyIds(current.progress, pushedProgress, failedProgress),
+        notes: mergeDirtyIds(current.notes, pushedNotes, failedNotes),
+      });
+    } catch {
+      // Dirty bookkeeping is best-effort (spec §3.4): a storage failure here degrades
+      // silently rather than rejecting sync()'s promise.
+    }
   }
 
   private mirror(
@@ -287,23 +310,37 @@ export class MirroredProgressRepository implements ProgressRepository {
     this.storage.setItem(STORAGE_KEYS.dirty, writeEnvelope(dirty));
   }
 
+  /**
+   * Called only from `mirror()`'s fire-and-forget settle handlers, which have no caller to
+   * report a rejection to — a storage failure here must degrade silently (best-effort mirror
+   * bookkeeping, spec §3.4), never reject the chain and surface as an unhandled rejection.
+   */
   private markDirty(kind: DirtyKind, id: string): void {
-    const dirty = this.readDirty();
-    if (!dirty[kind].includes(id)) {
-      this.writeDirty(withDirtyKind(dirty, kind, [...dirty[kind], id]));
+    try {
+      const dirty = this.readDirty();
+      if (!dirty[kind].includes(id)) {
+        this.writeDirty(withDirtyKind(dirty, kind, [...dirty[kind], id]));
+      }
+    } catch {
+      // See docstring: swallow, don't propagate into the fire-and-forget mirror chain.
     }
   }
 
+  /** See `markDirty`'s docstring — same fire-and-forget rationale. */
   private clearDirty(kind: DirtyKind, id: string): void {
-    const dirty = this.readDirty();
-    if (dirty[kind].includes(id)) {
-      this.writeDirty(
-        withDirtyKind(
-          dirty,
-          kind,
-          dirty[kind].filter((existing) => existing !== id),
-        ),
-      );
+    try {
+      const dirty = this.readDirty();
+      if (dirty[kind].includes(id)) {
+        this.writeDirty(
+          withDirtyKind(
+            dirty,
+            kind,
+            dirty[kind].filter((existing) => existing !== id),
+          ),
+        );
+      }
+    } catch {
+      // See docstring: swallow, don't propagate into the fire-and-forget mirror chain.
     }
   }
 }
