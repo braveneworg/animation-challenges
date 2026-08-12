@@ -294,6 +294,24 @@ describe('sync', () => {
     expect(await local.listProgress()).toEqual([initialProgressRecord('a/b', T_OLD)]);
   });
 
+  it('counts pushed data records only — the unconditional profile push is not a data sync', async () => {
+    // sync() always mirrors the local profile up regardless of whether anything else needed
+    // syncing; that housekeeping push must not inflate `pushed`, which Plan 05 will surface as
+    // "N items synced." One dirty progress record pushed successfully should read as pushed: 1.
+    const { mirrored, remote, storage } = makeFixture();
+    remote.failUpserts = true;
+    await mirrored.upsertProgress(initialProgressRecord('a/b', T_OLD));
+    await mirrored.flush();
+    expect(readDirtyProgress(storage)).toEqual(['a/b']);
+    remote.failUpserts = false;
+
+    const result = await mirrored.sync();
+
+    expect(result.status).toBe('synced');
+    expect(remote.profile).not.toBeNull(); // the profile really was pushed...
+    expect(result.pushed).toBe(1); // ...but doesn't count toward `pushed`.
+  });
+
   it('pushes dirty records, pulls newer remote records, and unions attempts', async () => {
     const { mirrored, local, remote, storage } = makeFixture();
     // Local write that never reached the server:

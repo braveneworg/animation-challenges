@@ -31,6 +31,15 @@ export const DEFAULT_PROFILE_NAME = 'Local user';
 const progressListSchema = z.array(progressRecordSchema);
 const attemptListSchema = z.array(attemptSchema);
 
+/** Documented, stable ordering for every attempt listing (per-challenge or all): oldest first,
+ * ties (identical `createdAt`) broken by `id` so the order never depends on insertion order or
+ * key interleaving — Plan 05 can rely on it. */
+function compareByCreatedAtThenId(left: Attempt, right: Attempt): number {
+  return left.createdAt === right.createdAt
+    ? left.id.localeCompare(right.id)
+    : left.createdAt.localeCompare(right.createdAt);
+}
+
 export class LocalProgressRepository implements SyncableProgressStore {
   private readonly storage: KeyValueStorage;
   private readonly now: () => string;
@@ -73,7 +82,9 @@ export class LocalProgressRepository implements SyncableProgressStore {
   }
 
   listAttempts(challengeId: string): Promise<Attempt[]> {
-    return Promise.resolve(this.readAttemptList(challengeId));
+    const attempts = this.readAttemptList(challengeId);
+    attempts.sort(compareByCreatedAtThenId);
+    return Promise.resolve(attempts);
   }
 
   /** Idempotent by attempt id — the mirror pulls remote attempts through this same method. */
@@ -95,11 +106,7 @@ export class LocalProgressRepository implements SyncableProgressStore {
         );
       }
     }
-    all.sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.id.localeCompare(right.id)
-        : left.createdAt.localeCompare(right.createdAt),
-    );
+    all.sort(compareByCreatedAtThenId);
     return Promise.resolve(all);
   }
 

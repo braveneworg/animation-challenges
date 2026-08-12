@@ -8,8 +8,8 @@ import { attemptsKey, MemoryStorage, STORAGE_KEYS } from '@/data/storage';
 const T0 = '2026-08-01T10:00:00.000Z';
 const NOW = (): string => '2026-08-02T00:00:00.000Z';
 
-function makeAttempt(id: string, challengeId: string): Attempt {
-  return { id, challengeId, createdAt: T0, passed: false, failures: [], durationMs: 1000 };
+function makeAttempt(id: string, challengeId: string, createdAt: string = T0): Attempt {
+  return { id, challengeId, createdAt, passed: false, failures: [], durationMs: 1000 };
 }
 
 describe('LocalProgressRepository', () => {
@@ -62,6 +62,25 @@ describe('LocalProgressRepository', () => {
     expect(storage.getItem(attemptsKey('a/b'))).not.toBeNull();
     const all = await repo.listAllAttempts();
     expect(all.map((attempt) => attempt.id).sort()).toEqual(['id-1', 'id-2', 'id-3']);
+  });
+
+  it('lists per-challenge attempts sorted by createdAt (ties by id), same as listAllAttempts — not raw insertion order', async () => {
+    const T_OLD = '2026-08-01T09:00:00.000Z';
+    const T_MID = '2026-08-01T10:00:00.000Z';
+    const T_NEW = '2026-08-01T11:00:00.000Z';
+    const repo = new LocalProgressRepository(new MemoryStorage(), { now: NOW });
+    // Inserted deliberately out of chronological order.
+    await repo.addAttempt(makeAttempt('newest', 'a/b', T_NEW));
+    await repo.addAttempt(makeAttempt('oldest', 'a/b', T_OLD));
+    await repo.addAttempt(makeAttempt('z-tie', 'a/b', T_MID));
+    await repo.addAttempt(makeAttempt('a-tie', 'a/b', T_MID));
+
+    expect((await repo.listAttempts('a/b')).map((attempt) => attempt.id)).toEqual([
+      'oldest',
+      'a-tie',
+      'z-tie',
+      'newest',
+    ]);
   });
 
   it('saves and lists notes keyed by challenge', async () => {

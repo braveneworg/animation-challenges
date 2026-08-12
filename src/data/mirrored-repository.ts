@@ -210,10 +210,13 @@ export class MirroredProgressRepository implements ProgressRepository {
       }
     });
 
-    // Profile: local is authoritative for the single implicit user; mirror it up.
+    // Profile: local is authoritative for the single implicit user; mirror it up. This is
+    // unconditional housekeeping, not a data sync outcome, so it does NOT add to `pushed` —
+    // the plan's contract doesn't pin `pushed`'s semantics explicitly, so this follows the
+    // simplest correct reading: `pushed` counts the reconciled progress/notes/attempts this
+    // sync actually pushed, not every remote write sync() happens to make.
     try {
       await remote.putProfile(await this.local.getProfile());
-      pushed += 1;
     } catch (error) {
       errors.push(`profile: ${errorMessage(error)}`);
     }
