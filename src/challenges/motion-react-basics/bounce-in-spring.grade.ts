@@ -4,6 +4,7 @@ import { forEachStep, pxNumber } from '@/sandbox/grader-utils';
 /** 240 virtual frames = 4s at 60Hz — far beyond the reference spring's settling time (~0.8s). */
 const SAMPLE_FRAMES = 240;
 const SCALE_EPSILON = 0.02;
+const OVERSHOOT_THRESHOLD = 1.02;
 
 /** Effective uniform scale: the transform matrix times the individual `scale` property (if set). */
 function scaleOf(ctx: GradeContext, el: Element): number {
@@ -41,11 +42,11 @@ export async function grade(ctx: GradeContext): Promise<void> {
   });
 
   const peak = Math.max(...samples);
-  ctx.expect(peak > 1.02, {
+  ctx.expect(peak > OVERSHOOT_THRESHOLD, {
     message: 'The scale overshoots past 1 on the way in — spring physics at work',
     hint: "Use `transition={{ type: 'spring', stiffness: 260, damping: 12 }}`. A duration-based ease never crosses its target.",
     actual: `peak scale ${peak.toFixed(3)} over ${SAMPLE_FRAMES} frames`,
-    expected: 'a peak above 1.02',
+    expected: `a peak above ${OVERSHOOT_THRESHOLD}`,
   });
 
   const finalScale = samples.at(-1) ?? Number.NaN;

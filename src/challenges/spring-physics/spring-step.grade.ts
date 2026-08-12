@@ -78,6 +78,27 @@ export async function grade(ctx: GradeContext): Promise<void> {
     expected: '{ position: 0, velocity: 0 }',
   });
 
+  // One step from rest with mass 2: the spring force alone (velocity is still 0, so damping force
+  // is 0) is unchanged at 100, but acceleration is force / mass = 50 — half the mass-1 case — so
+  // both the new velocity (5/6) and the position it produces (1/72) are exactly half of the
+  // mass-1 scenario above. A submission that omits `/ config.mass` keeps producing 5/3 and 1/36
+  // here regardless of `config.mass`, which this scenario alone catches.
+  const massScaled = springStep({ position: 0, velocity: 0 }, { target: 1, stiffness: 100, damping: 10, mass: 2 }, DT);
+  ctx.expect(massScaled !== null, {
+    message: '`springStep` returns a `{ position, velocity }` object when `config.mass` is not 1',
+    hint: 'Return a fresh object with numeric `position` and `velocity` fields, same as the mass-1 case.',
+  });
+  if (massScaled === null) return;
+
+  ctx.expectClose(massScaled.velocity, 5 / 6, 1e-9, {
+    message: 'One step from rest with mass 2: acceleration is halved, so velocity is 5/6 — half the mass-1 case',
+    hint: 'Acceleration is `(springForce + dampingForce) / mass`. Skip the division and velocity stays 5/3 no matter what `config.mass` is.',
+  });
+  ctx.expectClose(massScaled.position, 1 / 72, 1e-9, {
+    message: 'One step from rest with mass 2: position moves by that same halved velocity × dt (1/72)',
+    hint: 'Position uses the NEW velocity: (5/6) × (1/60) = 1/72.',
+  });
+
   const settled = simulate(springStep, { target: 1, stiffness: 170, damping: 26, mass: 1 }, STEP_COUNT);
   ctx.expect(settled !== null, {
     message: 'Repeated stepping keeps returning valid states',

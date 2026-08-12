@@ -37,7 +37,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
   });
 
   await ctx.time.seek(0);
-  ctx.expectClose(ctx.matrix(banner).e, 320, POSITION_EPSILON_PX * 4, {
+  ctx.expectClose(ctx.matrix(banner).e, 320, POSITION_EPSILON_PX, {
     message: 'By default the banner starts 320px to the right',
     hint: 'The slide-in `from` frame is `transform: translateX(320px)`.',
   });
