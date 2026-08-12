@@ -35,6 +35,10 @@ function manyIn(categoryId: CategoryId, count: number): CatalogEntry[] {
   );
 }
 
+function bounceInMember(id: string, categoryId: CategoryId, label = 'Bounce-in entrance'): CatalogEntry {
+  return entry({ id, categoryId, series: { id: 'bounce-in', label } });
+}
+
 describe('checkCatalogIntegrity', () => {
   it('returns no violations for a clean catalog', () => {
     expect(checkCatalogIntegrity([entry()])).toEqual([]);
@@ -160,5 +164,58 @@ describe('checkCatalogIntegrity', () => {
       'css-transitions/hover-lift: lists itself in relatedIds',
       'css-transitions/hover-lift: gradeMode "rubric" requires a non-empty rubric',
     ]);
+  });
+});
+
+describe('series membership', () => {
+  it('accepts a fully authored series: planned count reached, labels matching, categories distinct', () => {
+    const violations = checkCatalogIntegrity([
+      bounceInMember('css-keyframes/bounce-in', 'css-keyframes'),
+      bounceInMember('waapi/bounce-in', 'waapi'),
+      bounceInMember('motion-react-basics/bounce-in-spring', 'motion-react-basics'),
+    ]);
+
+    expect(violations).toEqual([]);
+  });
+
+  it('accepts a partially authored series — completeness belongs to the last content batch', () => {
+    expect(checkCatalogIntegrity([bounceInMember('css-keyframes/bounce-in', 'css-keyframes')])).toEqual([]);
+  });
+
+  it('reports a series that exceeds its planned member count', () => {
+    const violations = checkCatalogIntegrity([
+      bounceInMember('css-keyframes/bounce-in', 'css-keyframes'),
+      bounceInMember('waapi/bounce-in', 'waapi'),
+      bounceInMember('motion-react-basics/bounce-in-spring', 'motion-react-basics'),
+      bounceInMember('motion-core/bounce-in', 'motion-core'),
+    ]);
+
+    expect(violations).toEqual(['series "bounce-in": 4 members exceeds the planned 3']);
+  });
+
+  it('reports a member whose label does not match the series definition', () => {
+    const violations = checkCatalogIntegrity([bounceInMember('css-keyframes/bounce-in', 'css-keyframes', 'Bounce!')]);
+
+    expect(violations).toEqual([
+      'css-keyframes/bounce-in: series label "Bounce!" does not match the series definition "Bounce-in entrance"',
+    ]);
+  });
+
+  it('reports two members of one series sharing a category', () => {
+    const violations = checkCatalogIntegrity([
+      bounceInMember('css-keyframes/bounce-in', 'css-keyframes'),
+      bounceInMember('css-keyframes/bounce-in-again', 'css-keyframes'),
+    ]);
+
+    expect(violations).toEqual([
+      'series "bounce-in": "css-keyframes/bounce-in" and "css-keyframes/bounce-in-again" are both in category ' +
+        '"css-keyframes" — series members must come from distinct categories (spec §4.2)',
+    ]);
+  });
+
+  it('leaves an unknown series id to the existing unknown-id rule, without label or category noise', () => {
+    const violations = checkCatalogIntegrity([entry({ series: { id: 'not-a-series', label: 'Nope' } })]);
+
+    expect(violations).toEqual(['css-transitions/hover-lift: unknown series id "not-a-series"']);
   });
 });

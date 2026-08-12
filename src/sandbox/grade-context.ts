@@ -1,7 +1,7 @@
 import type { SandboxEnvironment } from '@/runner/protocol';
 import type { AssertionDetail } from '@/runner/types';
 import type { AssertionLog } from '@/sandbox/assertion-log';
-import { SIMULATED_HOVER_CLASS } from '@/sandbox/environment';
+import { enableSimulatedHover, SIMULATED_HOVER_CLASS } from '@/sandbox/environment';
 import { forEachStep } from '@/sandbox/sequence';
 import type { TimeController } from '@/sandbox/time-controller';
 
@@ -181,6 +181,13 @@ export function buildGradeContext(deps: GradeContextDeps): GradeContext {
       el.dispatchEvent(new MouseEvent('mouseenter'));
       forceReflow(el);
       await deps.nativeNextFrame();
+      // For a `wantsTailwind` challenge, adding the marker class is itself a DOM mutation that
+      // @tailwindcss/browser's own MutationObserver reacts to: it re-scans for utility candidates
+      // and regenerates its compiled <style>, which silently reverts the in-place `:hover` ->
+      // `:is(:hover, .__ac-hover)` rewrite on every Tailwind-generated hover rule (`enableSimulatedHover`
+      // is idempotent, so re-running it here is a no-op for non-Tailwind challenges whose rewrite
+      // never gets touched).
+      enableSimulatedHover(deps.doc);
     },
 
     async unhover(el: Element): Promise<void> {
@@ -190,6 +197,8 @@ export function buildGradeContext(deps: GradeContextDeps): GradeContext {
       el.dispatchEvent(new MouseEvent('mouseleave'));
       forceReflow(el);
       await deps.nativeNextFrame();
+      // Same Tailwind recompile hazard as `hover` above, triggered by removing the marker class.
+      enableSimulatedHover(deps.doc);
     },
 
     async click(el: Element): Promise<void> {

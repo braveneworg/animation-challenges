@@ -1,10 +1,7 @@
 import type { GradeContext } from '@/sandbox/grade-context';
+import { cssTransitionOn } from '@/sandbox/grader-utils';
 
 const POSITION_EPSILON_PX = 0.5;
-
-function transitionPropertyOf(animation: Animation): string | null {
-  return animation instanceof CSSTransition ? animation.transitionProperty : null;
-}
 
 function durationOf(ctx: GradeContext, animation: Animation | null): number | null {
   if (animation === null) return null;
@@ -36,10 +33,13 @@ export async function grade(ctx: GradeContext): Promise<void> {
 
   const transitions = ctx.animations(card);
   const describeTransitions =
-    transitions.map((animation) => transitionPropertyOf(animation) ?? 'non-transition animation').join(', ') ||
-    'no animations at all';
-  const transformTransition = transitions.find((animation) => transitionPropertyOf(animation) === 'transform') ?? null;
-  const shadowTransition = transitions.find((animation) => transitionPropertyOf(animation) === 'box-shadow') ?? null;
+    transitions
+      .map((animation) =>
+        animation instanceof CSSTransition ? animation.transitionProperty : 'non-transition animation',
+      )
+      .join(', ') || 'no animations at all';
+  const transformTransition = cssTransitionOn(transitions, ['transform']);
+  const shadowTransition = cssTransitionOn(transitions, ['box-shadow']);
 
   ctx.expect(transformTransition !== null, {
     message: 'Hovering starts a real transition on `transform`',
