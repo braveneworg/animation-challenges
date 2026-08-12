@@ -41,6 +41,9 @@ export function stableStringify(value: unknown): string {
  * truth; HTTP is a mirror. Dirty ids are unacknowledged local writes and always push.
  * Otherwise newest updatedAt wins; ties (including unparseable timestamps, since every
  * NaN comparison is false) resolve to local, pushing only when contents actually differ.
+ * Precondition: `id` is unique within `local` and unique within `remote` (each side is
+ * keyed by id internally) — a repeated id on either side is not deduplicated and produces
+ * undefined/incorrect reconciliation for that id.
  */
 export function reconcileByUpdatedAt<T extends Timestamped>(
   local: readonly T[],
@@ -92,7 +95,11 @@ export function reconcileByUpdatedAt<T extends Timestamped>(
   return { merged, toPush, toWriteLocal };
 }
 
-/** Append-only sets (attempts): union by id; on an id collision the local copy stands. */
+/**
+ * Append-only sets (attempts): union by id; on an id collision the local copy stands.
+ * Precondition: `id` is unique within `local` and unique within `remote` — a repeated id
+ * on either side is not deduplicated; every copy passes through independently.
+ */
 export function unionById<T extends Identified>(local: readonly T[], remote: readonly T[]): UnionPlan<T> {
   const localIds = new Set(local.map((item) => item.id));
   const remoteIds = new Set(remote.map((item) => item.id));
