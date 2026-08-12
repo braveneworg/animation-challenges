@@ -1,11 +1,8 @@
 import type { GradeContext } from '@/sandbox/grade-context';
+import { cssTransitionOn } from '@/sandbox/grader-utils';
 
 const POSITION_EPSILON_PX = 0.5;
 const BEZIER_PATTERN = /cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/;
-
-function transitionPropertyOf(animation: Animation): string | null {
-  return animation instanceof CSSTransition ? animation.transitionProperty : null;
-}
 
 /**
  * Grades `easing-timing/overshoot-bezier`: a single hover transition whose cubic-bezier easing
@@ -20,7 +17,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
 
   await ctx.hover(chip);
 
-  const transition = ctx.animations(chip).find((candidate) => transitionPropertyOf(candidate) === 'transform') ?? null;
+  const transition = cssTransitionOn(ctx.animations(chip), ['transform']);
   ctx.expect(transition !== null, {
     message: 'Hovering starts a transition on `transform`',
     hint: 'Keep the starter transition — only its timing function should change.',

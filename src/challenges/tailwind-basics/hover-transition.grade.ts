@@ -1,11 +1,8 @@
 import type { GradeContext } from '@/sandbox/grade-context';
+import { cssTransitionOn } from '@/sandbox/grader-utils';
 
 const TRANSFORM_FAMILY = ['transform', 'translate', 'scale', 'rotate'];
 const LIFT_PX = -6;
-
-function transitionPropertyOf(animation: Animation): string | null {
-  return animation instanceof CSSTransition ? animation.transitionProperty : null;
-}
 
 /**
  * Grades `tailwind-basics/hover-transition`. Movement is read through getBoundingClientRect deltas,
@@ -43,11 +40,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
 
   await ctx.hover(card);
 
-  const transition =
-    ctx.animations(card).find((candidate) => {
-      const property = transitionPropertyOf(candidate);
-      return property !== null && TRANSFORM_FAMILY.includes(property);
-    }) ?? null;
+  const transition = cssTransitionOn(ctx.animations(card), TRANSFORM_FAMILY);
   ctx.expect(transition !== null, {
     message: 'Hovering starts a real transition on the transform family',
     hint: 'Three utilities together: `transition-transform duration-300 ease-out` on the card, plus `hover:-translate-y-1.5`.',

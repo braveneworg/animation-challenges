@@ -36,3 +36,25 @@ export function numericFunction(value: unknown): NumericFunction | null {
     return typeof result === 'number' ? result : Number.NaN;
   };
 }
+
+/**
+ * Finds the first running CSS Transition among `animations` (pass `ctx.animations(el)` directly)
+ * whose `transitionProperty` is one of `properties` — a single name like `['transform']`, or a
+ * family like `['transform', 'translate', 'scale', 'rotate']`. Returns `null` when nothing
+ * matches, which every call site turns into a hinted failing assertion rather than a throw.
+ *
+ * Only a `CSSTransition` exposes `transitionProperty` (a `CSSAnimation` or plain `Animation` does
+ * not), so `instanceof` alone is enough to pick the real transitions out of everything else
+ * `getAnimations()` returns. The parameter is `readonly unknown[]`, not `readonly Animation[]`:
+ * that keeps the narrowing here the same `instanceof`-on-`unknown` idiom graders use everywhere
+ * else, and it is what lets this helper unit-test without a real browser's `Animation`/
+ * `CSSTransition` globals.
+ */
+export function cssTransitionOn(animations: readonly unknown[], properties: readonly string[]): Animation | null {
+  return (
+    animations.find(
+      (candidate): candidate is CSSTransition =>
+        candidate instanceof CSSTransition && properties.includes(candidate.transitionProperty),
+    ) ?? null
+  );
+}

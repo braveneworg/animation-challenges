@@ -1,11 +1,7 @@
 import type { GradeContext } from '@/sandbox/grade-context';
-import { pxNumber } from '@/sandbox/grader-utils';
+import { cssTransitionOn, pxNumber } from '@/sandbox/grader-utils';
 
 const ROTATION_EPSILON = 0.05;
-
-function transitionPropertyOf(animation: Animation): string | null {
-  return animation instanceof CSSTransition ? animation.transitionProperty : null;
-}
 
 /**
  * Grades `transforms-3d/card-flip`. Rotation is read through DOMMatrix components: for
@@ -67,7 +63,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
 
   await ctx.hover(scene);
 
-  const transition = ctx.animations(card).find((candidate) => transitionPropertyOf(candidate) === 'transform') ?? null;
+  const transition = cssTransitionOn(ctx.animations(card), ['transform']);
   ctx.expect(transition !== null, {
     message: 'Hovering the scene starts a transition on the card',
     hint: 'Two rules: `transition: transform 600ms ease;` on `.card`, and `.scene:hover .card { transform: rotateY(180deg); }`.',

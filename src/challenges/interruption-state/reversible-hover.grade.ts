@@ -1,14 +1,7 @@
 import type { GradeContext } from '@/sandbox/grade-context';
+import { cssTransitionOn } from '@/sandbox/grader-utils';
 
 const POSITION_EPSILON_PX = 2;
-
-function transformTransition(ctx: GradeContext, el: Element): Animation | null {
-  return (
-    ctx
-      .animations(el)
-      .find((candidate) => candidate instanceof CSSTransition && candidate.transitionProperty === 'transform') ?? null
-  );
-}
 
 /**
  * Grades `interruption-state/reversible-hover`. The "no snap" proof is mechanical: after
@@ -28,7 +21,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
 
   // Phase 1: a full round trip.
   await ctx.hover(track);
-  const outbound = transformTransition(ctx, knob);
+  const outbound = cssTransitionOn(ctx.animations(knob), ['transform']);
   ctx.expect(outbound !== null, {
     message: 'Hovering starts a transition on the knob',
     hint: 'The knob needs a `transition: transform 600ms linear;` — check WHERE it is declared.',
@@ -50,7 +43,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
   });
 
   await ctx.unhover(track);
-  const inbound = transformTransition(ctx, knob);
+  const inbound = cssTransitionOn(ctx.animations(knob), ['transform']);
   ctx.expect(inbound !== null, {
     message: 'Leaving hover ALSO animates — the return is a transition, not a teleport',
     hint: 'Declared inside `.track:hover .knob`, the transition vanishes with the hover. Move it to the resting `.knob` rule.',
@@ -72,7 +65,7 @@ export async function grade(ctx: GradeContext): Promise<void> {
   });
 
   await ctx.unhover(track);
-  const reversal = transformTransition(ctx, knob);
+  const reversal = cssTransitionOn(ctx.animations(knob), ['transform']);
   ctx.expect(reversal !== null, {
     message: 'Interrupting mid-flight starts a return transition',
     hint: 'With the transition on the resting rule, the browser retargets automatically — no JS needed.',
