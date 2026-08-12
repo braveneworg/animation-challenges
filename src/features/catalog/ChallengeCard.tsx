@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 
-import type { Challenge } from '@/challenges/types';
+import { challengeSlug, type Challenge } from '@/challenges/types';
 import { Badge } from '@/components/ui/badge';
 import type { ProgressRecord } from '@/data/records';
 import { challengeStatus } from '@/features/catalog/catalog-search';
@@ -18,7 +18,7 @@ export function ChallengeCard({ challenge, record, view }: ChallengeCardProps): 
   return (
     <Link
       to="/challenges/$categoryId/$slug"
-      params={{ categoryId: challenge.categoryId, slug: challenge.id.split('/')[1] ?? '' }}
+      params={{ categoryId: challenge.categoryId, slug: challengeSlug(challenge.id) }}
       className={cn(
         'border-border hover:bg-accent block rounded-lg border px-4 py-3 transition-colors',
         view === 'list' && 'flex items-center justify-between gap-4',

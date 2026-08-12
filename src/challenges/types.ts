@@ -56,3 +56,12 @@ export interface Challenge {
  * partial assertions on expiry; the host adds a hard backstop two seconds later.
  */
 export const DEFAULT_GRADER_TIMEOUT_MS = 5000;
+
+/**
+ * The slug segment of a challenge id (`${categoryId}/${slug}`, per `Challenge.id` above). The
+ * schema guarantees the two-segment shape (`challenges/schema.ts`), so this is total in practice;
+ * the `?? ''` is a defensive fallback for the type checker, not a real branch.
+ */
+export function challengeSlug(id: string): string {
+  return id.split('/')[1] ?? '';
+}

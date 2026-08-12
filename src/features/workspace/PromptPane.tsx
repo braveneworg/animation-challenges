@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 
 import { useProgressRepository } from '@/app/repository-provider';
 import { challengeRegistry } from '@/challenges/registry';
-import type { Challenge } from '@/challenges/types';
+import { challengeSlug, type Challenge } from '@/challenges/types';
 import { Badge } from '@/components/ui/badge';
 import { Markdown } from '@/components/ui/markdown';
 import { progressQueryOptions } from '@/data/queries';
@@ -66,7 +66,7 @@ export function PromptPane({ challenge }: { challenge: Challenge }): React.JSX.E
               <li key={sibling.id}>
                 <Link
                   to="/challenges/$categoryId/$slug"
-                  params={{ categoryId: sibling.categoryId, slug: sibling.id.split('/')[1] ?? '' }}
+                  params={{ categoryId: sibling.categoryId, slug: challengeSlug(sibling.id) }}
                   className="underline underline-offset-4"
                 >
                   {sibling.title}

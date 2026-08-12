@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { useProgressRepository } from '@/app/repository-provider';
 import { challengeRegistry } from '@/challenges/registry';
 import { SERIES } from '@/challenges/series';
+import { challengeSlug } from '@/challenges/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { attemptsQueryOptions, progressQueryOptions } from '@/data/queries';
@@ -73,7 +74,7 @@ function progressRow(record: ProgressRecord): React.JSX.Element | null {
           <p className="mt-2">
             <Link
               to="/challenges/$categoryId/$slug"
-              params={{ categoryId: challenge.categoryId, slug: challenge.id.split('/')[1] ?? '' }}
+              params={{ categoryId: challenge.categoryId, slug: challengeSlug(challenge.id) }}
               className="text-sm underline underline-offset-4"
             >
               Open workspace

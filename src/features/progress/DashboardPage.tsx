@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { useProgressRepository } from '@/app/repository-provider';
 import { CATEGORIES } from '@/challenges/categories';
 import { challengeRegistry } from '@/challenges/registry';
+import { challengeSlug } from '@/challenges/types';
 import { Button } from '@/components/ui/button';
 import { progressQueryOptions } from '@/data/queries';
 import {
@@ -24,12 +25,11 @@ export function DashboardPage(): React.JSX.Element {
   );
   const { challenges } = challengeRegistry;
   const completion = overallCompletion(challenges, progressById);
-  const categories = summarizeCategories(CATEGORIES, challenges, progressById).filter(
-    (summary) => summary.authored > 0,
-  );
+  const categorySummaries = summarizeCategories(CATEGORIES, challenges, progressById);
+  const categories = categorySummaries.filter((summary) => summary.authored > 0);
   const next = continueChallenge(challenges, progressList);
   const hasActivity = progressList.length > 0;
-  const weakest = hasActivity ? weakestCategory(summarizeCategories(CATEGORIES, challenges, progressById)) : null;
+  const weakest = hasActivity ? weakestCategory(categorySummaries) : null;
 
   return (
     <section className="mx-auto max-w-5xl space-y-8">
@@ -44,7 +44,7 @@ export function DashboardPage(): React.JSX.Element {
         <Button asChild>
           <Link
             to="/challenges/$categoryId/$slug"
-            params={{ categoryId: next.categoryId, slug: next.id.split('/')[1] ?? '' }}
+            params={{ categoryId: next.categoryId, slug: challengeSlug(next.id) }}
           >
             Continue: {next.title}
           </Link>

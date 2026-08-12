@@ -33,7 +33,7 @@ const MAX_CONSOLE_LINES = 200;
  * re-parenting it, because moving an iframe reloads its document. Width/height stay at the
  * deterministic viewport SandboxFrame set — the container scrolls instead of distorting layout.
  */
-export function revealPreviewIframe(container: HTMLElement): void {
+function revealPreviewIframe(container: HTMLElement): void {
   const iframe = container.querySelector('iframe');
   if (!(iframe instanceof HTMLIFrameElement)) return;
   iframe.style.position = 'static';
