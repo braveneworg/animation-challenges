@@ -214,3 +214,37 @@ describe('workspace mobile layout (390px)', () => {
     await page.viewport(1280, 800);
   }, 40_000);
 });
+
+describe('workspace layout breakpoint transition', () => {
+  it('keeps the live preview frame working after crossing the 768px breakpoint', async () => {
+    await page.viewport(1280, 800);
+    renderApp({ path: HOVER_LIFT });
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    const desktopYours = await screen.findByLabelText('Your output');
+    await waitFor(
+      () => {
+        const iframe = desktopYours.querySelector('iframe');
+        expect(iframe?.contentDocument?.querySelector('.card')).toBeTruthy();
+      },
+      { timeout: 20_000 },
+    );
+
+    // Crossing the breakpoint swaps the desktop grid for the mobile Tabs.Root tree (WorkspacePage's
+    // `isDesktop` branch): React unmounts the old output container div — and the iframe attached to
+    // it — out from under `usePreviewFrame`, whose mount effect never re-runs on its own. Wait for
+    // the mobile tab bar (a marker that only exists once `isDesktop` has actually flipped and React
+    // has committed the new tree) before re-querying the container.
+    await page.viewport(390, 844);
+    await screen.findByRole('tab', { name: 'Output' });
+    const mobileYours = await screen.findByLabelText('Your output');
+    expect(mobileYours).not.toBe(desktopYours);
+    await waitFor(
+      () => {
+        const iframe = mobileYours.querySelector('iframe');
+        expect(iframe?.contentDocument?.querySelector('.card')).toBeTruthy();
+      },
+      { timeout: 20_000 },
+    );
+    await page.viewport(1280, 800);
+  }, 40_000);
+});

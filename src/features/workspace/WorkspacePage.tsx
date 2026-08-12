@@ -129,6 +129,27 @@ function WorkspaceScreen({ challenge }: { challenge: Challenge }): React.JSX.Ele
   const mountTarget = useCallback((payload: MountPayload): void => targetRef.current.mount(payload), []);
   const recreateTarget = useCallback((): void => targetRef.current.recreate(), []);
   const targetStatus = target.status;
+  const targetEnabledRef = useRef(targetEnabled);
+  targetEnabledRef.current = targetEnabled;
+
+  // Crossing the desktop/mobile breakpoint swaps the entire pane tree (the `isDesktop` branch in
+  // the JSX below): React unmounts the old output container divs and mounts new ones, destroying
+  // the iframes attached to them out from under usePreviewFrame, whose mount effect only re-runs
+  // on [enabled, environment, generation] — container identity isn't one of its signals, so
+  // `status` keeps reading 'ready' against a frame that is no longer attached to anything. Bumping
+  // the hook's own recreate generation on every isDesktop flip (skipping the first mount) re-runs
+  // that effect against the freshly mounted container and re-mounts the last payload automatically
+  // (the hook's existing remembered-payload behavior) — the same recovery a manual "Recreate
+  // preview" click performs.
+  const isDesktopMountedRef = useRef(false);
+  useEffect(() => {
+    if (!isDesktopMountedRef.current) {
+      isDesktopMountedRef.current = true;
+      return;
+    }
+    recreateYours();
+    if (targetEnabledRef.current) recreateTarget();
+  }, [isDesktop, recreateTarget, recreateYours]);
 
   const [activeOutputTab, setActiveOutputTab] = useState<OutputTab>('preview');
   const [previewView, setPreviewView] = useState<PreviewView>('yours');
