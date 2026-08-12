@@ -33,6 +33,7 @@ export default mergeConfig(
           test: {
             name: 'browser',
             include: ['src/**/*.browser.test.{ts,tsx}'],
+            setupFiles: ['./src/test/setup.browser.ts'],
             browser: {
               enabled: true,
               provider: playwright(),

@@ -9,9 +9,15 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
 
 export function RootLayout(): React.JSX.Element {
   return (
-    <div className="bg-background text-foreground min-h-dvh">
+    <div className="bg-background text-foreground flex min-h-dvh flex-col">
+      <a
+        href="#main"
+        className="bg-background focus:ring-ring sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:px-3 focus:py-2 focus:ring-2"
+      >
+        Skip to main content
+      </a>
       <header className="border-border border-b">
-        <nav aria-label="Main" className="mx-auto flex max-w-5xl flex-wrap gap-4 px-4 py-3">
+        <nav aria-label="Main" className="mx-auto flex w-full max-w-7xl flex-wrap gap-4 px-4 py-3">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.to}
@@ -25,7 +31,7 @@ export function RootLayout(): React.JSX.Element {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main id="main" className="min-h-0 w-full flex-1 px-4 py-6">
         <Outlet />
       </main>
     </div>
