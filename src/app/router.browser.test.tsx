@@ -1,12 +1,8 @@
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router';
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
 import { routeTree } from '@/app/router';
-
-afterEach(() => {
-  cleanup();
-});
 
 function renderAt(path: string): void {
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
