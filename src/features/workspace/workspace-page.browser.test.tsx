@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { page } from '@vitest/browser/context';
 import { describe, expect, it } from 'vitest';
 
+import { challenge as hoverLiftChallenge } from '@/challenges/css-transitions/hover-lift';
 import { useWorkspaceStore } from '@/stores';
 import { renderApp } from '@/test/app-harness';
 
@@ -79,6 +80,76 @@ describe('workspace desktop layout', () => {
       const progress = await repository.listProgress();
       expect(progress.find((record) => record.challengeId === HOVER_LIFT_ID)?.status).toBe('unsolved');
     });
+  }, 40_000);
+
+  it('Reset never touches an already-solved progress record; Clear downgrades it but keeps attempts and resets workspace UI state', async () => {
+    await page.viewport(1280, 800);
+    const { repository } = renderApp({ path: HOVER_LIFT });
+
+    // Seed a SOLVED record with attempt history directly through the harness repository, bypassing
+    // the UI entirely — Reset must leave this completely untouched (draft-only semantics); only
+    // Clear may downgrade it.
+    const seededAt = new Date().toISOString();
+    await repository.addAttempt({
+      id: 'seed-attempt-1',
+      challengeId: HOVER_LIFT_ID,
+      createdAt: seededAt,
+      passed: true,
+      failures: [],
+      durationMs: 120,
+    });
+    await repository.upsertProgress({
+      id: HOVER_LIFT_ID,
+      challengeId: HOVER_LIFT_ID,
+      status: 'solved',
+      solveQuality: 'clean',
+      attempts: 1,
+      hintsRevealed: 0,
+      firstSolvedAt: seededAt,
+      lastAttemptAt: seededAt,
+      updatedAt: seededAt,
+    });
+
+    // Seed workspace UI state (revealed hint, spoiler shown, an edited draft) so Clear's UI reset
+    // is observable, and so Reset's promise to leave the record alone is tested against a record
+    // that would visibly change if Reset ever called recordClear.
+    useWorkspaceStore.getState().revealNextHint(HOVER_LIFT_ID);
+    useWorkspaceStore.getState().setSpoilerShown(HOVER_LIFT_ID, true);
+    useWorkspaceStore.getState().setDraftFile(HOVER_LIFT_ID, 'styles.css', '/* edited */');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset files' }));
+    await waitFor(() => {
+      const drafts = useWorkspaceStore.getState().byChallenge[HOVER_LIFT_ID]?.draftFiles ?? {};
+      expect(drafts['styles.css']).toBe(hoverLiftChallenge.starter['styles.css']);
+    });
+
+    // Reset must leave the progress record and attempt history completely untouched.
+    const afterReset = await repository.listProgress();
+    const afterResetRecord = afterReset.find((record) => record.challengeId === HOVER_LIFT_ID);
+    expect(afterResetRecord?.status).toBe('solved');
+    expect(afterResetRecord?.solveQuality).toBe('clean');
+    expect(afterResetRecord?.attempts).toBe(1);
+    expect(afterResetRecord?.firstSolvedAt).toBe(seededAt);
+    expect(await repository.listAttempts(HOVER_LIFT_ID)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear and mark unsolved' }));
+    await waitFor(async () => {
+      const progress = await repository.listProgress();
+      expect(progress.find((record) => record.challengeId === HOVER_LIFT_ID)?.status).toBe('unsolved');
+    });
+
+    // Clear downgrades the record but keeps attempt history (spec: attempts kept).
+    const afterClear = await repository.listProgress();
+    const afterClearRecord = afterClear.find((record) => record.challengeId === HOVER_LIFT_ID);
+    expect(afterClearRecord?.solveQuality).toBeNull();
+    expect(afterClearRecord?.attempts).toBe(1);
+    expect(await repository.listAttempts(HOVER_LIFT_ID)).toHaveLength(1);
+
+    // Clear also resets workspace UI state (hints accordion, spoiler flag) — the whole per-challenge
+    // entry is gone, taking the seeded revealed hint, spoiler flag, and draft with it.
+    expect(useWorkspaceStore.getState().byChallenge[HOVER_LIFT_ID]).toBeUndefined();
   }, 40_000);
 });
 
