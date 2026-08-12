@@ -42,7 +42,9 @@ export function CatalogPage(): React.JSX.Element {
   const hasFilters = Object.values(search).some((value) => value !== undefined);
 
   const updateSearch = (patch: Partial<CatalogSearch>): void => {
-    void navigate({ to: '/challenges', search: (previous) => ({ ...previous, ...patch }), replace: true });
+    void navigate({ to: '/challenges', search: (previous) => ({ ...previous, ...patch }), replace: true }).catch(
+      (error: unknown) => console.error('failed to update catalog filters', error),
+    );
   };
 
   return (
